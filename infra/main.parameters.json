@@ -89,15 +89,6 @@
     "backendServiceName": {
       "value": "${AZURE_CONTAINER_APP_NAME}"
     },
-    "realtimeDeploymentCapacity": {
-      "value": "${AZURE_OPENAI_REALTIME_DEPLOYMENT_CAPACITY=1}"
-    },
-    "realtimeDeploymentVersion": {
-      "value": "${AZURE_OPENAI_REALTIME_DEPLOYMENT_VERSION=2024-12-17}"
-    },
-    "embeddingDeploymentCapacity": {
-      "value": "${AZURE_OPENAI_EMB_DEPLOYMENT_CAPACITY=30}"
-    },
     "embeddingDimensions": {
       "value": "${AZURE_OPENAI_EMB_DIMENSIONS}"
     },

@@ -87,9 +87,6 @@ param openAiRealtimeVoiceChoice string = ''
 })
 param openAiServiceLocation string
 
-param realtimeDeploymentCapacity int
-param realtimeDeploymentVersion string
-param embeddingDeploymentCapacity int
 
 param tenantId string = tenant().tenantId
 
@@ -179,13 +176,10 @@ module containerApps 'core/host/container-apps.bicep' = {
 }
 
 // Container Apps for the web application (Python Quart app with JS frontend)
+// Note: dependsOn is inferred from output usage (containerApps.outputs, acaIdentity.outputs)
 module acaBackend 'core/host/container-app-upsert.bicep' = {
   name: 'aca-web'
   scope: resourceGroup
-  dependsOn: [
-    containerApps
-    acaIdentity
-  ]
   params: {
     name: !empty(backendServiceName) ? backendServiceName : '${abbrs.webSitesContainerApps}backend-${resourceToken}'
     location: location
@@ -211,7 +205,8 @@ module acaBackend 'core/host/container-app-upsert.bicep' = {
       AZURE_SEARCH_EMBEDDING_FIELD: searchEmbeddingField
       AZURE_SEARCH_USE_VECTOR_QUERY: searchUseVectorQuery
       AZURE_OPENAI_ENDPOINT: reuseExistingOpenAi ? openAiEndpoint : openAi.outputs.endpoint
-      AZURE_OPENAI_REALTIME_DEPLOYMENT: reuseExistingOpenAi ? openAiRealtimeDeployment : openAiDeployments[0].name
+      AZURE_OPENAI_REALTIME_DEPLOYMENT: reuseExistingOpenAi ? openAiRealtimeDeployment : 'gpt-realtime-mini'
+      AZURE_OPENAI_CHAT_DEPLOYMENT: reuseExistingOpenAi ? openAiRealtimeDeployment : 'gpt-5-mini'
       AZURE_OPENAI_REALTIME_VOICE_CHOICE: openAiRealtimeVoiceChoice
       // CORS support, for frontends on other hosts
       RUNNING_IN_PRODUCTION: 'true'
@@ -221,33 +216,11 @@ module acaBackend 'core/host/container-app-upsert.bicep' = {
   }
 }
 
-var embedModel = 'text-embedding-3-large'
-var openAiDeployments = [
-  {
-    name: 'gpt-4o-realtime-preview'
-    model: {
-      format: 'OpenAI'
-      name: 'gpt-4o-realtime-preview'
-      version: realtimeDeploymentVersion
-    }
-    sku: {
-      name: 'GlobalStandard'
-      capacity: realtimeDeploymentCapacity
-    }
-  }
-  {
-    name: embedModel
-    model: {
-      format: 'OpenAI'
-      name: embedModel
-      version: '1'
-    }
-    sku: {
-      name: 'Standard'
-      capacity: embeddingDeploymentCapacity
-    }
-  }
-]
+// Note: Model deployments are now handled via Azure CLI scripts instead of Bicep
+// This is because many models (including chat, audio, and some embedding models) 
+// cannot be deployed via Bicep/ARM templates. See scripts/deploy_models.sh/.ps1
+// All models will be deployed after infrastructure provisioning via scripts.
+var openAiDeployments = []
 
 module openAi 'br/public:avm/res/cognitive-services/account:0.8.0' = if (!reuseExistingOpenAi) {
   name: 'openai'
@@ -261,6 +234,8 @@ module openAi 'br/public:avm/res/cognitive-services/account:0.8.0' = if (!reuseE
       ? openAiServiceName
       : '${abbrs.cognitiveServicesAccounts}${resourceToken}'
     sku: 'S0'
+    // Note: Deployments are handled via Azure CLI scripts (deploy_models.sh/.ps1)
+    // because many models cannot be deployed via Bicep/ARM templates
     deployments: openAiDeployments
     disableLocalAuth: true
     publicNetworkAccess: 'Enabled'
@@ -403,10 +378,10 @@ output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_OPENAI_ENDPOINT string = reuseExistingOpenAi ? openAiEndpoint : openAi.outputs.endpoint
 output AZURE_OPENAI_REALTIME_DEPLOYMENT string = reuseExistingOpenAi
   ? openAiRealtimeDeployment
-  : openAiDeployments[0].name
+  : 'gpt-realtime-mini'
 output AZURE_OPENAI_REALTIME_VOICE_CHOICE string = openAiRealtimeVoiceChoice
-output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = embedModel
-output AZURE_OPENAI_EMBEDDING_MODEL string = embedModel
+output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = 'text-embedding-3-large'
+output AZURE_OPENAI_EMBEDDING_MODEL string = 'text-embedding-3-large'
 
 output AZURE_SEARCH_ENDPOINT string = reuseExistingSearch
   ? searchEndpoint

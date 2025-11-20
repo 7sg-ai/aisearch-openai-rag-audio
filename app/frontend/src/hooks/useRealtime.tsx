@@ -106,10 +106,11 @@ export default function useRealTime({
         try {
             message = JSON.parse(event.data);
         } catch (e) {
-            console.error("Failed to parse JSON message:", e);
-            throw e;
+            console.error("[useRealtime] Failed to parse JSON message:", e);
+            return;
         }
 
+        console.log("[useRealtime] Received message type:", message.type);
         switch (message.type) {
             case "response.done":
                 onReceivedResponseDone?.(message as ResponseDone);
@@ -127,11 +128,16 @@ export default function useRealTime({
                 onReceivedInputAudioTranscriptionCompleted?.(message as ResponseInputAudioTranscriptionCompleted);
                 break;
             case "extension.middle_tier_tool_response":
+                console.log("[useRealtime] Tool response received:", message);
                 onReceivedExtensionMiddleTierToolResponse?.(message as ExtensionMiddleTierToolResponse);
                 break;
             case "error":
+                console.error("[useRealtime] Error message:", message);
                 onReceivedError?.(message);
                 break;
+            default:
+                // Log unhandled message types for debugging
+                console.log("[useRealtime] Unhandled message type:", message.type, message);
         }
     };
 

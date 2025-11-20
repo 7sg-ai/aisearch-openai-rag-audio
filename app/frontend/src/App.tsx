@@ -7,11 +7,11 @@ import { GroundingFiles } from "@/components/ui/grounding-files";
 import GroundingFileView from "@/components/ui/grounding-file-view";
 import StatusMessage from "@/components/ui/status-message";
 
-import useRealTime from "@/hooks/useRealtime";
+import useRealtime from "@/hooks/useRealtime";
 import useAudioRecorder from "@/hooks/useAudioRecorder";
 import useAudioPlayer from "@/hooks/useAudioPlayer";
 
-import { GroundingFile, ToolResult } from "./types";
+import { GroundingFile } from "./types";
 
 import logo from "./assets/logo.svg";
 
@@ -20,44 +20,85 @@ function App() {
     const [groundingFiles, setGroundingFiles] = useState<GroundingFile[]>([]);
     const [selectedFile, setSelectedFile] = useState<GroundingFile | null>(null);
 
-    const { startSession, addUserAudio, inputAudioBufferClear } = useRealTime({
-        onWebSocketOpen: () => console.log("WebSocket connection opened"),
-        onWebSocketClose: () => console.log("WebSocket connection closed"),
-        onWebSocketError: event => console.error("WebSocket error:", event),
-        onReceivedError: message => console.error("error", message),
-        onReceivedResponseAudioDelta: message => {
-            isRecording && playAudio(message.delta);
+    const { reset: resetAudioPlayer, play: playAudio, stop: stopAudioPlayer } = useAudioPlayer();
+    const [isProcessing, setIsProcessing] = useState(false);
+    
+    const { startSession, addUserAudio, inputAudioBufferClear } = useRealtime({
+        enableInputAudioTranscription: true,
+        onWebSocketOpen: () => {
+            console.log("[App] WebSocket connected");
+            startSession();
+        },
+        onWebSocketClose: () => {
+            console.log("[App] WebSocket disconnected");
+            setIsProcessing(false);
+        },
+        onWebSocketError: (event) => {
+            console.error("[App] WebSocket error:", event);
+            setIsProcessing(false);
+        },
+        onReceivedResponseAudioDelta: (message) => {
+            // Play audio chunks as they arrive (delta is base64 PCM audio)
+            if (message.delta) {
+                console.log("[App] Received audio delta, playing...");
+                playAudio(message.delta);
+            }
+        },
+        onReceivedResponseDone: () => {
+            console.log("[App] Response complete");
+            setIsProcessing(false);
+        },
+        onReceivedExtensionMiddleTierToolResponse: (message) => {
+            // Handle tool results for grounding files
+            if (message.tool_name === "report_grounding" && message.tool_result) {
+                try {
+                    const result = JSON.parse(message.tool_result);
+                    if (result.sources && Array.isArray(result.sources)) {
+                        const files: GroundingFile[] = result.sources.map((x: any) => ({
+                            id: x.chunk_id,
+                            name: x.title,
+                            content: x.chunk,
+                        }));
+                        setGroundingFiles(prev => [...prev, ...files]);
+                    }
+                } catch (e) {
+                    console.error("[App] Error parsing tool result:", e);
+                }
+            }
         },
         onReceivedInputAudioBufferSpeechStarted: () => {
-            stopAudioPlayer();
+            console.log("[App] Speech detected, processing...");
+            setIsProcessing(true);
         },
-        onReceivedExtensionMiddleTierToolResponse: message => {
-            const result: ToolResult = JSON.parse(message.tool_result);
-
-            const files: GroundingFile[] = result.sources.map(x => {
-                return { id: x.chunk_id, name: x.title, content: x.chunk };
-            });
-
-            setGroundingFiles(prev => [...prev, ...files]);
-        }
+        onReceivedError: (message) => {
+            console.error("[App] Error from Realtime API:", message);
+            setIsProcessing(false);
+        },
     });
 
-    const { reset: resetAudioPlayer, play: playAudio, stop: stopAudioPlayer } = useAudioPlayer();
-    const { start: startAudioRecording, stop: stopAudioRecording } = useAudioRecorder({ onAudioRecorded: addUserAudio });
+    const { start: startAudioRecording, stop: stopAudioRecording } = useAudioRecorder({
+        onAudioRecorded: (base64Audio) => {
+            // Stream audio chunks to the WebSocket
+            console.log("[App] Sending audio chunk to WebSocket");
+            addUserAudio(base64Audio);
+        },
+    });
 
     const onToggleListening = async () => {
         if (!isRecording) {
-            startSession();
-            await startAudioRecording();
+            console.log("[App] Starting recording session");
             resetAudioPlayer();
-
+            setGroundingFiles([]); // Clear grounding files for new session
+            inputAudioBufferClear(); // Clear any previous audio
+            await startAudioRecording();
             setIsRecording(true);
+            console.log("[App] Recording session started");
         } else {
+            console.log("[App] Stopping recording session");
             await stopAudioRecording();
             stopAudioPlayer();
-            inputAudioBufferClear();
-
             setIsRecording(false);
+            console.log("[App] Recording session stopped");
         }
     };
 
@@ -89,7 +130,7 @@ function App() {
                             </>
                         )}
                     </Button>
-                    <StatusMessage isRecording={isRecording} />
+                    <StatusMessage isRecording={isRecording || isProcessing} />
                 </div>
                 <GroundingFiles files={groundingFiles} onSelected={setSelectedFile} />
             </main>

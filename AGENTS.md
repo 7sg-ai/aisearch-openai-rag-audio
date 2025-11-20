@@ -4,19 +4,19 @@ This file contains instructions for developers and automated coding agents worki
 
 ## Overview
 
-VoiceRAG is an application pattern demonstrating RAG (Retrieval Augmented Generation) with voice interfaces using Azure AI Search and the GPT-4o Realtime API for Audio. The application enables voice-based interactions with a knowledge base, with audio input processed through the browser and sent to Azure OpenAI's real-time API for responses.
+VoiceRAG is an application pattern demonstrating RAG (Retrieval Augmented Generation) with voice interfaces using Azure AI Search and Azure OpenAI models. The application enables voice-based interactions with a knowledge base, with audio input transcribed using gpt-realtime-mini, processed through gpt-5-mini with RAG, and synthesized to speech using gpt-realtime-mini.
 
 **Main technologies:**
 - **Backend**: Python 3.11+ with aiohttp web framework
 - **Frontend**: React with TypeScript, built with Vite
 - **Infrastructure**: Azure Bicep templates for Azure Container Apps deployment
-- **Key Azure Services**: Azure OpenAI (GPT-4o Realtime API), Azure AI Search, Azure Container Apps
+- **Key Azure Services**: Azure OpenAI (gpt-realtime-mini for transcription and speech synthesis, gpt-5-mini for chat), Azure AI Search, Azure Container Apps
 - **Deployment**: Azure Developer CLI (azd)
 
 **Primary entry points:**
 - `app/backend/app.py` - Backend application server (aiohttp)
 - `app/frontend/src/main.tsx` - Frontend React application
-- `scripts/start.sh` or `scripts/start.ps1` - Development server startup scripts
+- `scripts/start.sh` - Development server startup script
 
 ## Code layout
 
@@ -38,10 +38,10 @@ VoiceRAG is an application pattern demonstrating RAG (Retrieval Augmented Genera
   - `infra/main.parameters.json` - Template parameters
   - `infra/core/` - Reusable Bicep modules
 - `scripts/` - Helper scripts for development and deployment
-  - `scripts/start.sh` / `scripts/start.ps1` - Start development server
-  - `scripts/write_env.sh` / `scripts/write_env.ps1` - Generate .env file from azd
-  - `scripts/setup_intvect.sh` / `scripts/setup_intvect.ps1` - Setup integrated vectorization
-  - `scripts/load_python_env.sh` / `scripts/load_python_env.ps1` - Create Python virtual environment
+  - `scripts/start.sh` - Start development server
+  - `scripts/write_env.sh` - Generate .env file from azd
+  - `scripts/setup_intvect.sh` - Setup integrated vectorization
+  - `scripts/load_python_env.sh` - Create Python virtual environment
 - `data/` - Sample data files (Markdown documents)
 - `docs/` - Documentation
   - `docs/existing_services.md` - Connect to existing Azure services
@@ -65,7 +65,7 @@ Install the required tools:
 
 **Important for Windows users:**
 - Python and pip must be in PATH
-- [PowerShell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) is required
+- Use Git Bash, WSL, or similar Unix-like shell to run the `.sh` scripts
 
 ### Local development setup
 
@@ -95,7 +95,8 @@ Install the required tools:
    ```
    AZURE_TENANT_ID=<your-tenant-id>
    AZURE_OPENAI_ENDPOINT=https://<your-openai-service>.openai.azure.com
-   AZURE_OPENAI_REALTIME_DEPLOYMENT=gpt-4o-realtime-preview
+   AZURE_OPENAI_REALTIME_DEPLOYMENT=gpt-realtime-mini
+   AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-5-mini
    AZURE_OPENAI_REALTIME_VOICE_CHOICE=alloy
    AZURE_SEARCH_ENDPOINT=https://<your-search-service>.search.windows.net
    AZURE_SEARCH_INDEX=<your-index-name>
@@ -114,15 +115,11 @@ Install the required tools:
 
 5. **Start the development server:**
    
-   **Linux/Mac:**
    ```bash
    ./scripts/start.sh
    ```
    
-   **Windows:**
-   ```powershell
-   pwsh .\scripts\start.ps1
-   ```
+   **Note for Windows users:** Use Git Bash, WSL, or similar Unix-like shell to run the scripts.
 
 6. **Access the application:**
    
@@ -169,8 +166,7 @@ Install the required tools:
    
    After `azd up` completes, synchronize local environment:
    ```bash
-   ./scripts/write_env.sh  # Linux/Mac
-   pwsh ./scripts/write_env.ps1  # Windows
+   ./scripts/write_env.sh
    ```
 
 ## Running the tests
@@ -260,8 +256,8 @@ Key deployment files:
 ### Post-provision hooks
 
 After infrastructure provisioning, azd automatically runs:
-- `scripts/write_env.sh` / `scripts/write_env.ps1` - Generate .env file
-- `scripts/setup_intvect.sh` / `scripts/setup_intvect.ps1` - Setup integrated vectorization
+- `scripts/write_env.sh` - Generate .env file
+- `scripts/setup_intvect.sh` - Setup integrated vectorization
 
 ### Container deployment
 
@@ -309,7 +305,8 @@ npm run format
 **Required environment variables:**
 - `AZURE_TENANT_ID` - Azure tenant ID
 - `AZURE_OPENAI_ENDPOINT` - Azure OpenAI service endpoint
-- `AZURE_OPENAI_REALTIME_DEPLOYMENT` - Deployment name for GPT-4o realtime
+- `AZURE_OPENAI_REALTIME_DEPLOYMENT` - Deployment name for transcription and text-to-speech (gpt-realtime-mini)
+- `AZURE_OPENAI_CHAT_DEPLOYMENT` - Deployment name for chat completion (gpt-5-mini)
 - `AZURE_OPENAI_REALTIME_VOICE_CHOICE` - Voice selection (alloy, echo, shimmer)
 - `AZURE_SEARCH_ENDPOINT` - Azure AI Search endpoint
 - `AZURE_SEARCH_INDEX` - Search index name
@@ -334,15 +331,15 @@ npm run format
 4. **Frontend build**: Frontend builds into `app/backend/static/` directory
 5. **Port conflicts**: Backend runs on port 8765 by default
 6. **Azure costs**: Resources incur costs immediately after `azd up`. Clean up with `azd down`
-7. **Real-time API availability**: GPT-4o realtime API is only available in specific regions (eastus2, swedencentral)
-8. **WebSocket proxy**: Frontend dev server proxies `/realtime` to `ws://localhost:8765`
+7. **API endpoints**: Backend provides REST endpoints `/transcribe`, `/chat`, `/synthesize`, and `/clear` instead of WebSocket
+8. **Audio processing**: Audio is recorded, then sent as a complete file for transcription (not streamed)
 
 ### File paths and structure
 
 - Backend loads `.env` from `app/backend/.env`
 - Frontend builds to `app/backend/static/`
 - Static files served from backend at root path `/`
-- WebSocket endpoint at `/realtime`
+- REST endpoints at `/transcribe`, `/chat`, `/synthesize`, and `/clear`
 
 ## Validation checklist
 

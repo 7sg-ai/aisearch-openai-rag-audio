@@ -3,7 +3,10 @@
 
 You'll need instances of the following Azure services. You can re-use service instances you have already or create new ones.
 
-1. [Azure OpenAI](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI), with 2 model deployments, one of the **gpt-4o-realtime-preview** model, and one for embeddings (e.g.text-embedding-3-large, text-embedding-3-small, or text-embedding-ada-002)
+1. [Azure OpenAI](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI), with model deployments:
+   - **gpt-realtime-mini** for transcription and text-to-speech
+   - **gpt-5-mini** for chat completions
+   - One for embeddings (e.g.text-embedding-3-large, text-embedding-3-small, or text-embedding-ada-002)
 1. [Azure AI Search](https://ms.portal.azure.com/#create/Microsoft.Search), any tier Basic or above will work, ideally with [Semantic Search enabled](https://learn.microsoft.com/azure/search/semantic-how-to-enable-disable)
 1. [Azure Blob Storage](https://ms.portal.azure.com/#create/Microsoft.StorageAccount-ARM), with a container that has the content that represents your knowledge base (we include some sample data in this repo if you want an easy starting point)
 

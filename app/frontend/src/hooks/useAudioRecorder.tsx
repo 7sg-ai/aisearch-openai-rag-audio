@@ -27,10 +27,22 @@ export default function useAudioRecorder({ onAudioRecorded }: Parameters) {
             const toSend = new Uint8Array(buffer.slice(0, BUFFER_SIZE));
             buffer = new Uint8Array(buffer.slice(BUFFER_SIZE));
 
-            const regularArray = String.fromCharCode(...toSend);
-            const base64 = btoa(regularArray);
-
-            onAudioRecorded(base64);
+            // Convert Uint8Array to base64 using FileReader (avoids stack overflow from spread operator)
+            const blob = new Blob([toSend], { type: 'application/octet-stream' });
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                try {
+                    const dataUrl = reader.result as string;
+                    const base64 = dataUrl.split(',')[1]; // Extract base64 part
+                    onAudioRecorded(base64);
+                } catch (error) {
+                    console.error("[useAudioRecorder] Error converting to base64:", error);
+                }
+            };
+            reader.onerror = (error) => {
+                console.error("[useAudioRecorder] FileReader error:", error);
+            };
+            reader.readAsDataURL(blob);
         }
     };
 

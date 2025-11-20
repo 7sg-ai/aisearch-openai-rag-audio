@@ -10,13 +10,19 @@ from dotenv import load_dotenv
 from ragtools import attach_rag_tools
 from rtmt import RTMiddleTier
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("voicerag")
 
 async def create_app():
+    logger.info("[App] Initializing application...")
     if not os.environ.get("RUNNING_IN_PRODUCTION"):
-        logger.info("Running in development mode, loading from .env file")
+        logger.info("[App] Running in development mode, loading from .env file")
         load_dotenv()
+    else:
+        logger.info("[App] Running in production mode")
 
     llm_key = os.environ.get("AZURE_OPENAI_API_KEY")
     search_key = os.environ.get("AZURE_SEARCH_API_KEY")
@@ -34,12 +40,20 @@ async def create_app():
     
     app = web.Application()
 
+    # Get deployment name - gpt-realtime-mini for Realtime API (WebSocket)
+    realtime_deployment = os.environ.get("AZURE_OPENAI_REALTIME_DEPLOYMENT", "gpt-realtime-mini")
+    voice_choice = os.environ.get("AZURE_OPENAI_REALTIME_VOICE_CHOICE") or "alloy"
+
+    logger.info(f"[App] Initializing RTMiddleTier with endpoint: {os.environ['AZURE_OPENAI_ENDPOINT']}")
+    logger.info(f"[App] Realtime deployment: {realtime_deployment}, Voice: {voice_choice}")
     rtmt = RTMiddleTier(
-        credentials=llm_credential,
         endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        deployment=os.environ["AZURE_OPENAI_REALTIME_DEPLOYMENT"],
-        voice_choice=os.environ.get("AZURE_OPENAI_REALTIME_VOICE_CHOICE") or "alloy"
-        )
+        deployment=realtime_deployment,
+        credentials=llm_credential,
+        voice_choice=voice_choice
+    )
+    logger.info("[App] RTMiddleTier initialized successfully")
+    
     rtmt.system_message = """
         You are a helpful assistant. Only answer questions based on information you searched in the knowledge base, accessible with the 'search' tool. 
         The user is listening to answers with audio, so it's *super* important that answers are as short as possible, a single sentence if at all possible. 
@@ -62,12 +76,14 @@ async def create_app():
         use_vector_query=(os.getenv("AZURE_SEARCH_USE_VECTOR_QUERY", "true") == "true")
         )
 
+    logger.info("[App] Attaching WebSocket endpoint to app")
     rtmt.attach_to_app(app, "/realtime")
 
     current_directory = Path(__file__).parent
     app.add_routes([web.get('/', lambda _: web.FileResponse(current_directory / 'static/index.html'))])
     app.router.add_static('/', path=current_directory / 'static', name='static')
     
+    logger.info("[App] Application initialization complete")
     return app
 
 if __name__ == "__main__":
