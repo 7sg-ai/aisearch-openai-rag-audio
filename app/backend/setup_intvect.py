@@ -60,6 +60,36 @@ def load_azd_env():
     load_dotenv(env_file_path, override=True)
 
 
+def minutes_to_iso8601_duration(minutes: int) -> str:
+    """Convert minutes to ISO 8601 duration format (e.g., PT60M for 60 minutes)."""
+    if minutes < 5:
+        minutes = 5  # Minimum interval is 5 minutes
+    if minutes >= 1440:
+        # For 24+ hours, use days
+        days = minutes // 1440
+        remaining_minutes = minutes % 1440
+        if remaining_minutes == 0:
+            return f"P{days}D"
+        else:
+            hours = remaining_minutes // 60
+            mins = remaining_minutes % 60
+            if mins == 0:
+                return f"P{days}DT{hours}H"
+            else:
+                return f"P{days}DT{hours}H{mins}M"
+    elif minutes >= 60:
+        # For 1+ hours, use hours and minutes
+        hours = minutes // 60
+        mins = minutes % 60
+        if mins == 0:
+            return f"PT{hours}H"
+        else:
+            return f"PT{hours}H{mins}M"
+    else:
+        # For less than 1 hour, use minutes only
+        return f"PT{minutes}M"
+
+
 def setup_index(azure_credential, index_name, azure_search_endpoint, azure_storage_connection_string, azure_storage_container, azure_openai_embedding_endpoint, azure_openai_embedding_deployment, azure_openai_embedding_model, azure_openai_embeddings_dimensions):
     index_client = SearchIndexClient(azure_search_endpoint, azure_credential)
     indexer_client = SearchIndexerClient(azure_search_endpoint, azure_credential)
@@ -182,6 +212,7 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
     
     # Get schedule interval from environment (default: 1 hour)
     schedule_interval_minutes = int(os.environ.get("AZURE_SEARCH_INDEXER_SCHEDULE_MINUTES", "60"))
+    schedule_interval_iso8601 = minutes_to_iso8601_duration(schedule_interval_minutes)
     
     if indexer_exists:
         logger.info(f"Indexer {index_name} already exists")
@@ -190,10 +221,10 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
             full_indexer = indexer_client.get_indexer(index_name)
             if full_indexer.schedule is None:
                 logger.info(f"Adding schedule to existing indexer (runs every {schedule_interval_minutes} minutes)")
-                full_indexer.schedule = IndexingSchedule(interval=schedule_interval_minutes)
+                full_indexer.schedule = IndexingSchedule(interval=schedule_interval_iso8601)
                 indexer_client.create_or_update_indexer(full_indexer)
             else:
-                logger.info(f"Indexer already has a schedule: {full_indexer.schedule.interval} minutes")
+                logger.info(f"Indexer already has a schedule: {full_indexer.schedule.interval}")
         except Exception as e:
             logger.warning(f"Could not update indexer schedule: {e}")
     else:
@@ -205,7 +236,7 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
                 skillset_name=index_name,
                 target_index_name=index_name,        
                 field_mappings=[FieldMapping(source_field_name="metadata_storage_name", target_field_name="title")],
-                schedule=IndexingSchedule(interval=schedule_interval_minutes)
+                schedule=IndexingSchedule(interval=schedule_interval_iso8601)
             )
         )
 
