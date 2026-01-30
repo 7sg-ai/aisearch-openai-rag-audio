@@ -37,6 +37,7 @@ from azure.search.documents.indexes.models import (
     VectorSearch,
     VectorSearchAlgorithmMetric,
     VectorSearchProfile,
+    IndexingSchedule,
 )
 from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
@@ -171,16 +172,40 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
                 )))
 
     indexers = indexer_client.get_indexers()
-    if index_name in [indexer.name for indexer in indexers]:
-        logger.info(f"Indexer {index_name} already exists, not re-creating")
+    indexer_exists = False
+    existing_indexer = None
+    for idx in indexers:
+        if idx.name == index_name:
+            indexer_exists = True
+            existing_indexer = idx
+            break
+    
+    # Get schedule interval from environment (default: 1 hour)
+    schedule_interval_minutes = int(os.environ.get("AZURE_SEARCH_INDEXER_SCHEDULE_MINUTES", "60"))
+    
+    if indexer_exists:
+        logger.info(f"Indexer {index_name} already exists")
+        # Get full indexer details and update with schedule if it doesn't have one
+        try:
+            full_indexer = indexer_client.get_indexer(index_name)
+            if full_indexer.schedule is None:
+                logger.info(f"Adding schedule to existing indexer (runs every {schedule_interval_minutes} minutes)")
+                full_indexer.schedule = IndexingSchedule(interval=schedule_interval_minutes)
+                indexer_client.create_or_update_indexer(full_indexer)
+            else:
+                logger.info(f"Indexer already has a schedule: {full_indexer.schedule.interval} minutes")
+        except Exception as e:
+            logger.warning(f"Could not update indexer schedule: {e}")
     else:
+        logger.info(f"Creating indexer: {index_name} with schedule (runs every {schedule_interval_minutes} minutes)")
         indexer_client.create_indexer(
             indexer=SearchIndexer(
                 name=index_name,
                 data_source_name=index_name,
                 skillset_name=index_name,
                 target_index_name=index_name,        
-                field_mappings=[FieldMapping(source_field_name="metadata_storage_name", target_field_name="title")]
+                field_mappings=[FieldMapping(source_field_name="metadata_storage_name", target_field_name="title")],
+                schedule=IndexingSchedule(interval=schedule_interval_minutes)
             )
         )
 

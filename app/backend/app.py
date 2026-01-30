@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -7,6 +8,7 @@ from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential, DefaultAzureCredential
 from dotenv import load_dotenv
 
+from document_sync import DocumentSync
 from ragtools import attach_rag_tools
 from rtmt import RTMiddleTier
 
@@ -82,6 +84,43 @@ async def create_app():
     current_directory = Path(__file__).parent
     app.add_routes([web.get('/', lambda _: web.FileResponse(current_directory / 'static/index.html'))])
     app.router.add_static('/', path=current_directory / 'static', name='static')
+    
+    # Initialize document sync if storage endpoint is configured
+    doc_sync: DocumentSync | None = None
+    if os.environ.get("AZURE_STORAGE_ENDPOINT") and os.environ.get("AZURE_SEARCH_INDEX"):
+        try:
+            sync_interval = int(os.environ.get("DOCUMENT_SYNC_INTERVAL_SECONDS", "300"))  # Default: 5 minutes
+            doc_sync = DocumentSync(
+                storage_endpoint=os.environ["AZURE_STORAGE_ENDPOINT"],
+                storage_container=os.environ.get("AZURE_STORAGE_CONTAINER", "documents"),
+                search_endpoint=os.environ.get("AZURE_SEARCH_ENDPOINT"),
+                indexer_name=os.environ.get("AZURE_SEARCH_INDEX"),
+                credential=search_credential,
+                sync_interval_seconds=sync_interval
+            )
+            logger.info(f"[App] Document sync initialized (interval: {sync_interval}s)")
+        except Exception as e:
+            logger.warning(f"[App] Failed to initialize document sync: {e}")
+            doc_sync = None
+    
+    # Store doc_sync in app for cleanup
+    app["doc_sync"] = doc_sync
+    
+    # Start document sync background task
+    async def on_startup(app):
+        sync = app.get("doc_sync")
+        if sync:
+            sync.start()
+            logger.info("[App] Document sync started")
+    
+    async def on_cleanup(app):
+        sync = app.get("doc_sync")
+        if sync:
+            sync.stop()
+            logger.info("[App] Document sync stopped")
+    
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
     
     logger.info("[App] Application initialization complete")
     return app
