@@ -208,6 +208,7 @@ module acaBackend 'core/host/container-app-upsert.bicep' = {
       AZURE_OPENAI_REALTIME_DEPLOYMENT: reuseExistingOpenAi ? openAiRealtimeDeployment : 'gpt-realtime-mini'
       AZURE_OPENAI_CHAT_DEPLOYMENT: reuseExistingOpenAi ? openAiRealtimeDeployment : 'gpt-5-mini'
       AZURE_OPENAI_REALTIME_VOICE_CHOICE: openAiRealtimeVoiceChoice
+      AZURE_OPENAI_TTS_DEPLOYMENT: 'tts-hd'
       // CORS support, for frontends on other hosts
       RUNNING_IN_PRODUCTION: 'true'
       // For using managed identity to access Azure resources. See https://github.com/microsoft/azure-container-apps/issues/442
@@ -380,6 +381,7 @@ output AZURE_OPENAI_REALTIME_DEPLOYMENT string = reuseExistingOpenAi
   ? openAiRealtimeDeployment
   : 'gpt-realtime-mini'
 output AZURE_OPENAI_REALTIME_VOICE_CHOICE string = openAiRealtimeVoiceChoice
+output AZURE_OPENAI_TTS_DEPLOYMENT string = 'tts-hd'
 output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = 'text-embedding-3-large'
 output AZURE_OPENAI_EMBEDDING_MODEL string = 'text-embedding-3-large'
 

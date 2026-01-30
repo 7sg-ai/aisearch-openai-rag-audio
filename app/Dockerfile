@@ -18,8 +18,7 @@ COPY ./backend/ /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Install backend requirements (gunicorn is already in requirements.txt)
 RUN python -m pip install -r requirements.txt
-
-RUN python -m pip install gunicorn
 
 CMD ["python3", "-m", "gunicorn", "app:create_app", "-b", "0.0.0.0:8000", "--worker-class", "aiohttp.GunicornWebWorker"]

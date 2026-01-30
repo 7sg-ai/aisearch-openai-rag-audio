@@ -132,10 +132,17 @@ deploy_model() {
     fi
 }
 
-# Deploy gpt-realtime-mini (transcription and TTS - single deployment for both)
-echo "=== Deploying gpt-realtime-mini (transcription and text-to-speech) ==="
+# Deploy gpt-realtime-mini (transcription)
+echo "=== Deploying gpt-realtime-mini (transcription) ==="
 deploy_model "gpt-realtime-mini" "gpt-realtime-mini" "GlobalStandard"
 REALTIME_RESULT=$?
+
+echo ""
+
+# Deploy tts-hd (text-to-speech for /synthesize endpoint - required for profile data generation)
+echo "=== Deploying tts-hd (text-to-speech) ==="
+deploy_model "tts-hd" "tts-hd" "Standard"
+TTS_RESULT=$?
 
 echo ""
 
@@ -155,15 +162,16 @@ echo ""
 echo "=== Deployment Summary ==="
 SUCCESS_COUNT=0
 if [ $REALTIME_RESULT -eq 0 ]; then ((SUCCESS_COUNT++)); fi
+if [ $TTS_RESULT -eq 0 ]; then ((SUCCESS_COUNT++)); fi
 if [ $CHAT_RESULT -eq 0 ]; then ((SUCCESS_COUNT++)); fi
 if [ $EMBED_RESULT -eq 0 ]; then ((SUCCESS_COUNT++)); fi
 
-if [ $SUCCESS_COUNT -eq 3 ]; then
+if [ $SUCCESS_COUNT -eq 4 ]; then
     echo "✓ All models deployed successfully!"
     echo ""
     echo "You can now use the application."
 else
-    echo "⚠ Some deployments may have failed ($SUCCESS_COUNT/3 succeeded)."
+    echo "⚠ Some deployments may have failed ($SUCCESS_COUNT/4 succeeded)."
     echo "Please check the errors above and deploy manually via Azure Portal if needed."
     echo "See docs/manual_model_deployment.md for instructions."
 fi

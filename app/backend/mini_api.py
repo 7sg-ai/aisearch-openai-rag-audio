@@ -14,7 +14,7 @@ logger = logging.getLogger("voicerag")
 
 
 class MiniAPI:
-    """Handles transcription using gpt-realtime-mini, chat completion, and TTS using gpt-realtime-mini."""
+    """Handles transcription using gpt-realtime-mini, chat completion, and TTS."""
     
     def __init__(
         self,
@@ -23,11 +23,14 @@ class MiniAPI:
         chat_deployment: str,
         credentials: AzureKeyCredential | DefaultAzureCredential,
         voice_choice: Optional[str] = None,
+        tts_deployment: Optional[str] = None,
     ):
         self.endpoint = endpoint
         self.realtime_deployment = realtime_deployment
         self.chat_deployment = chat_deployment
         self.voice_choice = voice_choice or "alloy"
+        # TTS requires tts-1 or tts-1-hd; gpt-realtime-mini does not support audio.speech.create
+        self.tts_deployment = tts_deployment or realtime_deployment
         
         # Initialize Azure OpenAI client
         if isinstance(credentials, AzureKeyCredential):
@@ -282,12 +285,12 @@ class MiniAPI:
             raise web.HTTPInternalServerError(text=f"Chat completion failed: {str(e)}")
     
     async def synthesize_speech(self, text: str) -> bytes:
-        """Synthesize speech using Azure OpenAI TTS API."""
+        """Synthesize speech using Azure OpenAI TTS API (requires tts-1 or tts-1-hd deployment)."""
         try:
             logger.info(f"[MiniAPI] Starting speech synthesis, text: {text[:100]}...")
-            logger.info(f"[MiniAPI] Using model: {self.realtime_deployment}, voice: {self.voice_choice}")
+            logger.info(f"[MiniAPI] Using TTS model: {self.tts_deployment}, voice: {self.voice_choice}")
             response = await self.client.audio.speech.create(
-                model=self.realtime_deployment,
+                model=self.tts_deployment,
                 voice=self.voice_choice,
                 input=text,
             )
