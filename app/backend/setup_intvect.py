@@ -107,9 +107,27 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
                 container=SearchIndexerDataContainer(name=azure_storage_container)))
 
     index_names = [index.name for index in index_client.list_indexes()]
+    index_needs_update = False
+    
     if index_name in index_names:
-        logger.info(f"Index {index_name} already exists, not re-creating")
-    else:
+        logger.info(f"Index {index_name} already exists, checking if it needs updates...")
+        # Check if index has required parent_id field
+        existing_index = index_client.get_index(index_name)
+        existing_field_names = [field.name for field in existing_index.fields]
+        if "parent_id" not in existing_field_names:
+            logger.warning(f"Index {index_name} is missing 'parent_id' field required for index projections. Index will be recreated.")
+            # Delete the existing index so we can recreate it with the correct schema
+            try:
+                index_client.delete_index(index_name)
+                logger.info(f"Deleted existing index {index_name}")
+                index_needs_update = True
+            except Exception as e:
+                logger.error(f"Failed to delete index {index_name}: {e}")
+                raise
+        else:
+            logger.info(f"Index {index_name} has all required fields")
+    
+    if index_name not in index_names or index_needs_update:
         logger.info(f"Creating index: {index_name}")
         index_client.create_index(
             SearchIndex(
@@ -158,9 +176,20 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
         )
 
     skillsets = indexer_client.get_skillsets()
-    if index_name in [skillset.name for skillset in skillsets]:
-        logger.info(f"Skillset {index_name} already exists, not re-creating")
-    else:
+    skillset_exists = index_name in [skillset.name for skillset in skillsets]
+    
+    # If index was recreated, we need to recreate the skillset too
+    if skillset_exists and index_needs_update:
+        logger.info(f"Deleting existing skillset {index_name} to recreate with updated index schema...")
+        try:
+            indexer_client.delete_skillset(index_name)
+            logger.info(f"Deleted skillset {index_name}")
+            skillset_exists = False
+        except Exception as e:
+            logger.error(f"Failed to delete skillset {index_name}: {e}")
+            raise
+    
+    if not skillset_exists:
         logger.info(f"Creating skillset: {index_name}")
         indexer_client.create_skillset(
             skillset=SearchIndexerSkillset(
@@ -201,8 +230,19 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
                     )
                 )))
 
+    # If index was recreated, we need to delete and recreate indexers too
     indexers = indexer_client.get_indexers()
     indexer_exists = False
+    if index_needs_update:
+        # Delete any existing indexers that reference this index
+        for indexer in indexers:
+            if indexer.target_index_name == index_name:
+                logger.info(f"Deleting indexer {indexer.name} because index was recreated...")
+                try:
+                    indexer_client.delete_indexer(indexer.name)
+                    logger.info(f"Deleted indexer {indexer.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete indexer {indexer.name}: {e}")
     existing_indexer = None
     for idx in indexers:
         if idx.name == index_name:
