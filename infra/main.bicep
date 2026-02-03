@@ -340,12 +340,29 @@ module openAiRoleBackend 'core/security/role.bicep' = {
 
 // Used to issue search queries
 // https://learn.microsoft.com/azure/search/search-security-rbac
-module searchRoleBackend 'core/security/role.bicep' = {
+// Role assignment must be scoped to the search service resource, not the resource group
+var actualSearchServiceName = !empty(searchServiceName) ? searchServiceName : 'gptkb-${resourceToken}'
+
+// Role assignment for new search service - scoped to the search service resource
+module searchRoleBackendNew 'core/security/search-role-assignment.bicep' = if (!reuseExistingSearch) {
   scope: searchServiceResourceGroup
-  name: 'search-role-backend'
+  name: 'search-role-backend-new'
   params: {
     principalId: acaBackend.outputs.identityPrincipalId
-    roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
+    searchServiceName: actualSearchServiceName
+    roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f' // Search Index Data Reader
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Role assignment for existing search service - scoped to the search service resource
+module searchRoleBackendExisting 'core/security/search-role-assignment.bicep' = if (reuseExistingSearch) {
+  scope: searchServiceResourceGroup
+  name: 'search-role-backend-existing'
+  params: {
+    principalId: acaBackend.outputs.identityPrincipalId
+    searchServiceName: actualSearchServiceName
+    roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f' // Search Index Data Reader
     principalType: 'ServicePrincipal'
   }
 }
