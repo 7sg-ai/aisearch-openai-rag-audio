@@ -6,8 +6,10 @@ from typing import Any, Callable, Optional
 
 import aiohttp
 from aiohttp import web
-from azure.core.credentials import AzureKeyCredential
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+import boto3
+from botocore.credentials import Credentials
+import boto3
+from botocore.auth import SigV4Auth
 
 logger = logging.getLogger("voicerag")
 
@@ -65,17 +67,17 @@ class RTMiddleTier:
     _tools_pending = {}
     _token_provider = None
 
-    def __init__(self, endpoint: str, deployment: str, credentials: AzureKeyCredential | DefaultAzureCredential, voice_choice: Optional[str] = None):
-        self.endpoint = endpoint
-        self.deployment = deployment
+    def __init__(self, region: str, model_id: str, credentials: Credentials | None = None, voice_choice: Optional[str] = None):
+        self.region = region
+        self.model_id = model_id
         self.voice_choice = voice_choice
         if voice_choice is not None:
             logger.info("Realtime voice choice set to %s", voice_choice)
         if isinstance(credentials, AzureKeyCredential):
-            self.key = credentials.key
+            # AWS credentials are automatically sourced from environment variables or IAM role; no explicit key assignment needed
         else:
-            self._token_provider = get_bearer_token_provider(credentials, "https://cognitiveservices.azure.com/.default")
-            self._token_provider() # Warm up during startup so we have a token cached when the first request arrives
+            self.bedrock_client = boto3.client('bedrock-runtime', region_name=self.region)
+            # No explicit token fetch needed; boto3 handles credentials via IAM/Env vars # Warm up during startup so we have a token cached when the first request arrives
 
     async def _process_message_to_client(self, msg: str, client_ws: web.WebSocketResponse, server_ws: web.WebSocketResponse) -> Optional[str]:
         message = json.loads(msg.data)

@@ -3,10 +3,12 @@ import logging
 import os
 import subprocess
 
-from azure.core.exceptions import ResourceExistsError
-from azure.identity import AzureDeveloperCliCredential
-from azure.search.documents.indexes import SearchIndexClient, SearchIndexerClient
-from azure.search.documents.indexes.models import (
+from botocore.exceptions import ClientError as ResourceExistsError
+import boto3
+from boto3.session import Session as AzureDeveloperCliCredential
+from opensearchpy import OpenSearch as SearchIndexClient, OpenSearch as SearchIndexerClient
+# OpenSearch does not require these Azure-specific model imports.
+# Define equivalent data structures if needed.
     AzureOpenAIEmbeddingSkill,
     AzureOpenAIParameters,
     AzureOpenAIVectorizer,
@@ -39,14 +41,14 @@ from azure.search.documents.indexes.models import (
     VectorSearchProfile,
     IndexingSchedule,
 )
-from azure.storage.blob import BlobServiceClient
+import boto3
 from dotenv import load_dotenv
 from rich.logging import RichHandler
 
 
 def load_azd_env():
     """Get path to current azd env file and load file using python-dotenv"""
-    result = subprocess.run("azd env list -o json", shell=True, capture_output=True, text=True)
+    result = subprocess.run("aws configure list --output json", shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         raise Exception("Error loading azd env")
     env_json = json.loads(result.stdout)
@@ -90,21 +92,19 @@ def minutes_to_iso8601_duration(minutes: int) -> str:
         return f"PT{minutes}M"
 
 
-def setup_index(azure_credential, index_name, azure_search_endpoint, azure_storage_connection_string, azure_storage_container, azure_openai_embedding_endpoint, azure_openai_embedding_deployment, azure_openai_embedding_model, azure_openai_embeddings_dimensions):
-    index_client = SearchIndexClient(azure_search_endpoint, azure_credential)
-    indexer_client = SearchIndexerClient(azure_search_endpoint, azure_credential)
+def setup_index(boto3.session.Session(), index_name, aws_opensearch_endpoint, aws_s3_credentials, aws_s3_bucket_name, aws_bedrock_embedding_endpoint, aws_bedrock_model_id, aws_bedrock_model_name, aws_bedrock_embedding_dimensions):
+    index_client = SearchIndexClient(hosts=[{'host': aws_opensearch_endpoint, 'port': 443}], http_auth=('admin', 'admin'), use_ssl=True, verify_certs=True)
+    indexer_client = SearchIndexerClient(hosts=[{'host': aws_opensearch_endpoint, 'port': 443}], http_auth=('admin', 'admin'), use_ssl=True, verify_certs=True)
 
-    data_source_connections = indexer_client.get_data_source_connections()
+    data_source_connections = s3 = boto3.client('s3')
+existing_buckets = [b['Name'] for b in s3.list_buckets()['Buckets']]
     if index_name in [ds.name for ds in data_source_connections]:
         logger.info(f"Data source connection {index_name} already exists, not re-creating")
     else:
         logger.info(f"Creating data source connection: {index_name}")
-        indexer_client.create_data_source_connection(
-            data_source_connection=SearchIndexerDataSourceConnection(
-                name=index_name, 
-                type=SearchIndexerDataSourceType.AZURE_BLOB,
-                connection_string=azure_storage_connection_string,
-                container=SearchIndexerDataContainer(name=azure_storage_container)))
+        if index_name not in existing_buckets:
+    s3.create_bucket(Bucket=index_name)
+# No direct equivalent of Azure Search data source; OpenSearch indexes are created separately.
 
     index_names = [index.name for index in index_client.list_indexes()]
     index_needs_update = False
@@ -251,7 +251,7 @@ def setup_index(azure_credential, index_name, azure_search_endpoint, azure_stora
             break
     
     # Get schedule interval from environment (default: 1 hour)
-    schedule_interval_minutes = int(os.environ.get("AZURE_SEARCH_INDEXER_SCHEDULE_MINUTES", "60"))
+    schedule_interval_minutes = int(os.environ.get("AWS_SEARCH_INDEXER_SCHEDULE_MINUTES", "60"))
     schedule_interval_iso8601 = minutes_to_iso8601_duration(schedule_interval_minutes)
     
     if indexer_exists:

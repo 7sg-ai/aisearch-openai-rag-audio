@@ -28,11 +28,10 @@ param containerAppsEnvironmentName string = '${containerName}env'
 param containerRegistryName string
 
 @description('Hostname suffix for container registry. Set when deploying to sovereign clouds')
-param containerRegistryHostSuffix string = 'azurecr.io'
+param containerRegistryHostSuffix string = 'ecr.amazonaws.com'
 
-@allowed(['http', 'grpc'])
-@description('The protocol used by Dapr to connect to the app, e.g., HTTP or gRPC')
-param daprAppProtocol string = 'http'
+// AWS App Mesh uses HTTP/GRPC – keep protocol param but remove Dapr specific naming
+param appProtocol string = 'http'
 
 @description('Enable or disable Dapr for the container app')
 param daprEnabled bool = false
@@ -56,9 +55,8 @@ param identityName string = ''
 @description('The name of the container image')
 param imageName string = ''
 
-@description('The secrets required for the container')
-@secure()
-param secrets object = {}
+// AWS Secrets Manager – reference secret ARNs
+param secretArns array = []
 
 @description('The keyvault identities required for the container')
 @secure()
@@ -67,8 +65,8 @@ param keyvaultIdentities object = {}
 @description('The environment variables for the container in key value pairs')
 param env object = {}
 
-@description('Specifies if the resource ingress is exposed externally')
-param external bool = true
+// AWS ALB listener configuration – set public facing flag via LoadBalancer scheme
+param albPublic bool = true
 
 @description('The service binds associated with the container')
 param serviceBinds array = []
@@ -76,12 +74,14 @@ param serviceBinds array = []
 @description('The target port for the container')
 param targetPort int = 80
 
-@allowed(['Consumption', 'D4', 'D8', 'D16', 'D32', 'E4', 'E8', 'E16', 'E32', 'NC24-A100', 'NC48-A100', 'NC96-A100'])
+// AWS Fargate CPU/Memory combos – define via task definition resources
+param cpu string = '256' // 0.25 vCPU
+param memory string = '512' // 0.5 GB
 param workloadProfile string = 'Consumption'
 
 param allowedOrigins array = []
 
-resource existingApp 'Microsoft.App/containerApps@2023-05-02-preview' existing = if (exists) {
+// AWS ECS Service – use AWS::ECS::Service (or CDK construct) instead of Azure Container Apps
   name: name
 }
 

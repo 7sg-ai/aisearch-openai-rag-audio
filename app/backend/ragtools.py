@@ -1,10 +1,10 @@
 import re
 from typing import Any
 
-from azure.core.credentials import AzureKeyCredential
-from azure.identity import DefaultAzureCredential
-from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import VectorizableTextQuery
+import boto3
+import boto3
+from opensearchpy import OpenSearch
+# VectorizableTextQuery is Azure‑specific; use OpenSearch kNN query dict
 
 from rtmt import RTMiddleTier, Tool, ToolResult, ToolResultDirection
 
@@ -62,14 +62,29 @@ async def _search_tool(
     vector_queries = []
     if use_vector_query:
         vector_queries.append(VectorizableTextQuery(text=args['query'], k_nearest_neighbors=50, fields=embedding_field))
-    search_results = await search_client.search(
-        search_text=args["query"], 
-        query_type="semantic" if semantic_configuration else "simple",
-        semantic_configuration_name=semantic_configuration,
-        top=5,
-        vector_queries=vector_queries,
-        select=", ".join([identifier_field, content_field])
-    )
+    knn_query = {
+        "field": embedding_field,
+        "query_vector": args["query"],
+        "k": 5,
+        "num_candidates": 50
+    } if use_vector_query else None
+
+    body = {
+        "size": 5,
+        "_source": [identifier_field, content_field]
+    }
+    if knn_query:
+        body["knn"] = knn_query
+    else:
+        body["query"] = {"match": {"_all": args["query"]}}
+
+    search_results = self.opensearch_client.search(index=self.index_name, body=body)
+    # Convert OpenSearch response to the same async iterator shape used by Azure SDK
+    async def _gen():
+        for hit in search_results["hits"]["hits"]:
+            source = hit["_source"]
+            yield {identifier_field: source[identifier_field], content_field: source[content_field]}
+    search_results = _gen()
     result = ""
     async for r in search_results:
         result += f"[{r[identifier_field]}]: {r[content_field]}\n-----\n"
@@ -85,11 +100,21 @@ async def _report_grounding_tool(search_client: SearchClient, identifier_field: 
     print(f"Grounding source: {list}")
     # Use search instead of filter to align with how detailt integrated vectorization indexes
     # are generated, where chunk_id is searchable with a keyword tokenizer, not filterable 
-    search_results = await search_client.search(search_text=list, 
-                                                search_fields=[identifier_field], 
-                                                select=[identifier_field, title_field, content_field], 
-                                                top=len(sources), 
-                                                query_type="full")
+    body = {
+        "size": len(sources),
+        "_source": [identifier_field, title_field, content_field],
+        "query": {
+            "bool": {
+                "should": [{"match_phrase": {identifier_field: src}} for src in sources]
+            }
+        }
+    }
+    search_results = self.opensearch_client.search(index=self.index_name, body=body)
+    async def _gen():
+        for hit in search_results["hits"]["hits"]:
+            source = hit["_source"]
+            yield source
+    search_results = _gen()ull")
     
     # If your index has a key field that's filterable but not searchable and with the keyword analyzer, you can 
     # use a filter instead (and you can remove the regex check above, just ensure you escape single quotes)

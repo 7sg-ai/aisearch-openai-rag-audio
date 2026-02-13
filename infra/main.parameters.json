@@ -5,8 +5,8 @@
     "environmentName": {
       "value": "${AZURE_ENV_NAME}"
     },
-    "resourceGroupName": {
-      "value": "${AZURE_RESOURCE_GROUP}"
+    "vpcId": {
+      "value": "${AWS_VPC_ID}"
     },
     "location": {
       "value": "${AZURE_LOCATION}"
@@ -17,8 +17,8 @@
     "openAiServiceLocation": {
       "value": "${AZURE_OPENAI_SERVICE_LOCATION}"
     },
-    "openAiServiceName": {
-      "value": "${AZURE_OPENAI_SERVICE}"
+    "bedrockModelId": {
+      "value": "${AWS_BEDROCK_MODEL_ID}"
     },
     "openAiResourceGroupName": {
       "value": "${AZURE_OPENAI_RESOURCE_GROUP}"
@@ -38,7 +38,7 @@
     "searchIndexName": {
       "value": "${AZURE_SEARCH_INDEX=voicerag-intvect}"
     },
-    "searchSemanticConfiguration":{
+    "searchSemanticConfiguration": {
       "value": "${AZURE_SEARCH_SEMANTIC_CONFIGURATION=default}"
     },
     "searchIdentifierField": {
@@ -56,8 +56,8 @@
     "searchUseVectorQuery": {
       "value": "${AZURE_SEARCH_USE_VECTOR_QUERY=true}"
     },
-    "searchServiceName": {
-      "value": "${AZURE_SEARCH_SERVICE}"
+    "opensearchDomainName": {
+      "value": "${AWS_OPENSEARCH_DOMAIN}"
     },
     "searchServiceResourceGroupName": {
       "value": "${AZURE_SEARCH_SERVICE_RESOURCE_GROUP}"
@@ -77,8 +77,8 @@
     "searchEndpoint": {
       "value": "${AZURE_SEARCH_ENDPOINT}"
     },
-    "storageAccountName": {
-      "value": "${AZURE_STORAGE_ACCOUNT}"
+    "s3BucketName": {
+      "value": "${AWS_S3_BUCKET}"
     },
     "storageResourceGroupName": {
       "value": "${AZURE_STORAGE_RESOURCE_GROUP}"
@@ -92,8 +92,8 @@
     "embeddingDimensions": {
       "value": "${AZURE_OPENAI_EMB_DIMENSIONS}"
     },
-    "logAnalyticsName": {
-      "value": "${AZURE_LOG_ANALYTICS}"
+    "cloudWatchLogGroup": {
+      "value": "${AWS_CLOUDWATCH_LOG_GROUP}"
     },
     "runningOnGh": {
       "value": "${GITHUB_ACTIONS}"

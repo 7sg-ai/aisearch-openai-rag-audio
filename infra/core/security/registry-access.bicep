@@ -2,10 +2,10 @@ metadata description = 'Assigns ACR Pull permissions to access an Azure Containe
 param containerRegistryName string
 param principalId string
 
-var acrPullRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+# AWS IAM policy ARN for ECR read‑only access (e.g., arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly)
 
-resource aksAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: containerRegistry // Use when specifying a scope that is different than the deployment scope
+# AWS IAM Role and Policy for ECR pull (e.g., AWS::IAM::Role with AmazonEC2ContainerRegistryReadOnly managed policy)
+  # AWS does not scope IAM role to a specific ECR repository; permissions are granted via the attached policy
   name: guid(subscription().id, resourceGroup().id, principalId, acrPullRole)
   properties: {
     roleDefinitionId: acrPullRole
@@ -14,6 +14,6 @@ resource aksAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' existing = {
+# Reference to existing AWS ECR repository (e.g., using AWS::ECR::Repository or import via ARN)
   name: containerRegistryName
 }

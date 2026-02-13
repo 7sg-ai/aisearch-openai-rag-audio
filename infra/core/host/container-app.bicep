@@ -29,10 +29,10 @@ param containerName string = 'main'
 param containerRegistryName string = ''
 
 @description('Hostname suffix for container registry. Set when deploying to sovereign clouds')
-param containerRegistryHostSuffix string = 'azurecr.io'
+param containerRegistryHostSuffix string = 'amazonaws.com'
 
 @description('The protocol used by Dapr to connect to the app, e.g., http or grpc')
-@allowed([ 'http', 'grpc' ])
+// Dapr not supported in AWS; consider AWS App Mesh or remove Dapr configuration
 param daprAppProtocol string = 'http'
 
 @description('The Dapr app ID')
@@ -79,9 +79,9 @@ param serviceType string = ''
 @description('The target port for the container')
 param targetPort int = 80
 
-param workloadProfile string = 'Consumption'
+param workloadProfile string = 'FARGATE'
 
-resource userIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = if (!empty(identityName)) {
+resource userIdentity 'AWS::IAM::Role' = if (!empty(identityName)) {
   name: identityName
 }
 
@@ -110,7 +110,7 @@ module containerRegistryAccess '../security/registry-access.bicep' = if (usePriv
   }
 }
 
-resource app 'Microsoft.App/containerApps@2023-05-02-preview' = {
+resource app 'AWS::ECS::Service' = {
   name: name
   location: location
   tags: tags

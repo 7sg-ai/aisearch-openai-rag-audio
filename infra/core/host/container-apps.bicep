@@ -7,10 +7,12 @@ param containerAppsEnvironmentName string
 param containerRegistryName string
 param containerRegistryResourceGroupName string = ''
 param containerRegistryAdminUserEnabled bool = false
-param logAnalyticsWorkspaceResourceId string
-param virtualNetworkSubnetId string = ''
-@allowed(['Consumption', 'D4', 'D8', 'D16', 'D32', 'E4', 'E8', 'E16', 'E32', 'NC24-A100', 'NC48-A100', 'NC96-A100'])
-param workloadProfile string
+// Replace Azure Log Analytics Workspace with AWS CloudWatch Log Group ARN
+param cloudWatchLogGroupArn string
+// Replace Azure VNet Subnet ID with AWS Subnet ID
+param subnetId string = ''
+// AWS uses compute types like FARGATE or EC2; adjust accordingly
+param workloadProfile string = 'FARGATE'
 
 var workloadProfiles = workloadProfile == 'Consumption'
   ? [
@@ -35,7 +37,8 @@ var workloadProfiles = workloadProfile == 'Consumption'
 @description('Optional user assigned identity IDs to assign to the resource')
 param userAssignedIdentityResourceIds array = []
 
-module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.5.2' = {
+// Replace Azure Container Apps Managed Environment with AWS ECS Cluster
+module containerAppsEnvironment 'aws-cdk-lib/aws-ecs:Cluster' = {
   name: '${name}-container-apps-environment'
   params: {
     // Required parameters
@@ -58,7 +61,8 @@ module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.5.2
   }
 }
 
-module containerRegistry 'br/public:avm/res/container-registry/registry:0.5.1' = {
+// Replace Azure Container Registry with AWS ECR Repository
+module containerRegistry 'aws-cdk-lib/aws-ecr:Repository' = {
   name: '${name}-container-registry'
   scope: resourceGroup(!empty(containerRegistryResourceGroupName) ? containerRegistryResourceGroupName : resourceGroup().name)
   params: {

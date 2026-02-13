@@ -32,7 +32,8 @@ import io
 
 import websockets
 from dotenv import load_dotenv
-from openai import AzureOpenAI
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from pydub import AudioSegment
 from pypdf import PdfReader
 from requests import Session
@@ -90,10 +91,18 @@ Document content:
 {document_content}
 """
 
-    response = client.chat.completions.create(
-        model=deployment,
-        messages=[{"role": "user", "content": prompt}],
+    bedrock = boto3.client('bedrock-runtime')
+    response = bedrock.invoke_model(
+        modelId=deployment,
+        body=json.dumps({
+            "prompt": prompt,
+            "max_tokens": 500,
+            "temperature": 0.7
+        })
     )
+    # Decode Bedrock response
+    response_body = json.loads(response.get('body').read())
+    text = response_body.get('completion') or ''
     text = response.choices[0].message.content or ""
     questions = []
     for line in text.strip().split("\n"):

@@ -10,14 +10,11 @@ import subprocess
 from pathlib import Path
 
 try:
-    from azure.identity import DefaultAzureCredential, AzureDeveloperCliCredential
-    from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
-    from azure.mgmt.cognitiveservices.models import (
-        Deployment,
-        DeploymentProperties,
-        DeploymentModel,
-        Sku,
-    )
+    import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+    # AWS SageMaker client import
+import boto3
+    # AWS SageMaker model deployment does not require these class imports; using boto3 client calls.
 except ImportError:
     print("ERROR: Required Azure packages not installed.")
     print("Install with: pip install azure-identity azure-mgmt-cognitiveservices")
@@ -28,7 +25,7 @@ def get_azd_env_value(key: str) -> str:
     """Get environment variable from azd."""
     try:
         result = subprocess.run(
-            ["azd", "env", "get-value", key],
+            ["aws", "ssm", "get-parameter", "--name", f"/myapp/{key}", "--query", "Parameter.Value", "--output", "text"],
             capture_output=True,
             text=True,
             check=True,
@@ -59,8 +56,8 @@ def load_env_from_file():
 def get_service_info():
     """Get OpenAI service name and resource group."""
     # Load from azd
-    endpoint = get_azd_env_value("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-    resource_group = get_azd_env_value("AZURE_RESOURCE_GROUP") or os.environ.get("AZURE_RESOURCE_GROUP", "")
+    endpoint = os.getenv("BEDROCK_ENDPOINT") or os.getenv("AWS_BEDROCK_ENDPOINT", "")
+    aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
     
     # Extract service name from endpoint
     service_name = ""
@@ -74,10 +71,8 @@ def get_service_info():
     if not resource_group and service_name:
         try:
             result = subprocess.run(
-                ["az", "cognitiveservices", "account", "show",
-                 "--name", service_name,
-                 "--query", "resourceGroup",
-                 "-o", "tsv"],
+                ["aws", "sagemaker", "describe-endpoint", "--endpoint-name", service_name,
+                 "--query", "EndpointConfigName", "--output", "text"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -100,11 +95,14 @@ def deploy_model(client, resource_group: str, service_name: str, deployment_name
     
     try:
         # Check if deployment exists
-        existing = client.deployments.get(
-            resource_group_name=resource_group,
-            account_name=service_name,
-            deployment_name=deployment_name,
-        )
+        existing = sagemaker = boto3.client('sagemaker')
+        try:
+            sagemaker.describe_endpoint_config(EndpointConfigName=deployment_name)
+            print(f"  ✓ Deployment '{deployment_name}' already exists, skipping...")
+            return True
+        except sagemaker.exceptions.ClientError as e:
+            if e.response['Error']['Code'] != 'ValidationException':
+                raise
         print(f"  ✓ Deployment '{deployment_name}' already exists, skipping...")
         return True
     except Exception:
@@ -112,11 +110,28 @@ def deploy_model(client, resource_group: str, service_name: str, deployment_name
     
     print(f"  Deploying '{deployment_name}' (model: {model_name})...")
     
-    # Create deployment model
-    model = DeploymentModel(
-        format="OpenAI",
-        name=model_name,
-        version="1",
+    # Create SageMaker model and endpoint configuration using boto3
+    sagemaker = boto3.client('sagemaker')
+    model_response = sagemaker.create_model(
+        ModelName=model_name,
+        PrimaryContainer={
+            'Image': f"public.ecr.aws/amazonlinux/amazonlinux:2",
+            'ModelDataUrl': f"s3://my-model-bucket/{model_name}.tar.gz"
+        },
+        ExecutionRoleArn=os.getenv('SAGEMAKER_EXECUTION_ROLE')
+    )
+    endpoint_config_response = sagemaker.create_endpoint_config(
+        EndpointConfigName=deployment_name,
+        ProductionVariants=[{
+            'VariantName': 'AllTraffic',
+            'ModelName': model_name,
+            'InitialInstanceCount': capacity,
+            'InstanceType': sku_name  # map Azure SKU to SageMaker instance type
+        }]
+    )
+    sagemaker.create_endpoint(
+        EndpointName=deployment_name,
+        EndpointConfigName=deployment_name
     )
     
     # Create deployment properties

@@ -1,4 +1,4 @@
-targetScope = 'subscription'
+// AWS CloudFormation stack – no targetScope needed
 
 @minLength(1)
 @maxLength(64)
@@ -91,7 +91,7 @@ param openAiServiceLocation string
 param tenantId string = tenant().tenantId
 
 @description('Id of the user or app to assign application roles')
-param principalId string = ''
+param iamRoleArn string = '' // AWS IAM Role ARN
 
 var abbrs = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
@@ -110,19 +110,20 @@ param webAppExists bool
 param azureContainerAppsWorkloadProfile string
 
 param acaIdentityName string = '${environmentName}-aca-identity'
-param containerRegistryName string = '${replace(environmentName, '-', '')}acr'
+param ecrRepositoryName string = '${replace(environmentName, '-', '')}ecr'
 
 // Figure out if we're running as a user or service principal
 var principalType = empty(runningOnGh) && empty(runningOnAdo) ? 'User' : 'ServicePrincipal'
 
 // Organize resources in a resource group
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
+// AWS VPC is created outside of this template or referenced via Parameters
+// parameter vpcId string
   name: !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}${environmentName}'
   location: location
   tags: tags
 }
 
-resource openAiResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(openAiResourceGroupName)) {
+// AWS Bedrock does not require a separate resource group; use parameter bedrockModelId instead
   name: !empty(openAiResourceGroupName) ? openAiResourceGroupName : resourceGroup.name
 }
 

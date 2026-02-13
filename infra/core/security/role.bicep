@@ -11,11 +11,11 @@ param principalId string
 param principalType string = 'ServicePrincipal'
 param roleDefinitionId string
 
-resource role 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+# AWS IAM PolicyAttachment (e.g., AWS::IAM::PolicyAttachment) linking the principal to the desired managed or custom policy
   name: guid(subscription().id, resourceGroup().id, principalId, roleDefinitionId)
   properties: {
     principalId: principalId
     principalType: principalType
-    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', roleDefinitionId)
+    # AWS uses IAM policy ARN; replace with appropriate ARN or managed policy name (e.g., arn:aws:iam::aws:policy/YourPolicy)
   }
 }

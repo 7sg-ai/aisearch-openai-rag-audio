@@ -1,7 +1,7 @@
 metadata description = 'Creates a role assignment for a service principal scoped to a search service resource.'
 param principalId string
 param searchServiceName string
-param roleDefinitionId string = '1407120a-92aa-4202-b7e9-c0e197c71c8f' // Search Index Data Reader
+param roleDefinitionId string = 'arn:aws:iam::aws:policy/AmazonOpenSearchServiceReadOnlyAccess' // AWS OpenSearch read‑only policy
 
 @allowed([
   'Device'
@@ -13,14 +13,14 @@ param roleDefinitionId string = '1407120a-92aa-4202-b7e9-c0e197c71c8f' // Search
 param principalType string = 'ServicePrincipal'
 
 // Reference to the search service
-resource searchService 'Microsoft.Search/searchServices@2023-11-01' existing = {
+# Reference to existing AWS OpenSearch Service domain (e.g., using AWS::OpenSearchService::Domain ARN)
   name: searchServiceName
 }
 
 // Role assignment scoped to the search service resource
-resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+# AWS IAM Policy for OpenSearch read access (e.g., AWS::IAM::Policy attached to a role with arn:aws:iam::aws:policy/AmazonOpenSearchServiceReadOnlyAccess)
   name: guid(subscription().id, resourceGroup().id, searchServiceName, principalId, roleDefinitionId)
-  scope: searchService
+  # AWS IAM policies are not scoped via a separate property; include the OpenSearch domain ARN in the policy's Resource element
   properties: {
     principalId: principalId
     principalType: principalType

@@ -1,10 +1,10 @@
 param identityName string
 param location string
 
-resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource webIdentity 'AWS::IAM::Role' = {
   name: identityName
   location: location
 }
 
-output principalId string = webIdentity.properties.principalId
-output clientId string = webIdentity.properties.clientId
+output roleArn string = webIdentity.Arn
+// clientId not applicable in AWS
