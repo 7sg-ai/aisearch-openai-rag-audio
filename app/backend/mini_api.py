@@ -2,15 +2,17 @@ import base64
 import io
 import logging
 import struct
+import atexit
 from typing import Optional
 
 import aiohttp
 from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from langfuse.decorators import observe
+from langfuse.decorators import langfuse_context, observe
 from langfuse.openai import AsyncAzureOpenAI
 
+atexit.register(langfuse_context.flush)
 
 logger = logging.getLogger("voicerag")
 
