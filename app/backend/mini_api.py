@@ -8,6 +8,7 @@ import aiohttp
 from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from langfuse import CallbackHandler
 from openai import AsyncAzureOpenAI
 
 logger = logging.getLogger("voicerag")
@@ -52,6 +53,7 @@ class MiniAPI:
         self.conversation_history = []
         self.system_message = None
         self.tools = {}
+        self.langfuse_callback = CallbackHandler()
         
     def set_system_message(self, message: str):
         """Set the system message for chat completions."""
@@ -182,6 +184,7 @@ class MiniAPI:
                 messages=messages,
                 tools=tools,
                 tool_choice="auto" if tools else None,
+                langfuse_callback=self.langfuse_callback,
             )
             logger.info(f"[MiniAPI] Chat completion API response received")
             
@@ -264,6 +267,7 @@ class MiniAPI:
                 response = await self.client.chat.completions.create(
                     model=self.chat_deployment,
                     messages=messages,
+                    langfuse_callback=self.langfuse_callback,
                 )
                 assistant_message = response.choices[0].message
                 logger.info(f"[MiniAPI] Final response received: {assistant_message.content}")

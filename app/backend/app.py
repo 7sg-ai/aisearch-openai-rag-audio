@@ -7,7 +7,9 @@ from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential, DefaultAzureCredential
 from dotenv import load_dotenv
+import atexit
 
+from langfuse.decorators import observe, langfuse_context
 from document_sync import DocumentSync
 from ragtools import attach_rag_tools
 from rtmt import RTMiddleTier
@@ -124,6 +126,9 @@ async def create_app():
     
     logger.info("[App] Application initialization complete")
     return app
+
+# Register Langfuse flush on application shutdown
+atexit.register(langfuse_context.flush)
 
 if __name__ == "__main__":
     host = "localhost"

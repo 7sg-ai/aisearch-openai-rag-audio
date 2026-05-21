@@ -8,6 +8,7 @@ import aiohttp
 from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from langfuse.decorators import observe
 
 logger = logging.getLogger("voicerag")
 
@@ -178,6 +179,7 @@ class RTMiddleTier:
 
         return updated_message
 
+    @observe()
     async def _forward_messages(self, ws: web.WebSocketResponse):
         async with aiohttp.ClientSession(base_url=self.endpoint) as session:
             params = { "api-version": self.api_version, "deployment": self.deployment}
@@ -218,6 +220,7 @@ class RTMiddleTier:
                     # Ignore the errors resulting from the client disconnecting the socket
                     pass
 
+    @observe()
     async def _websocket_handler(self, request: web.Request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)

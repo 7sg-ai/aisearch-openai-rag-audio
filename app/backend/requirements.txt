@@ -6,4 +6,5 @@ python-dotenv==1.0.1
 azure-storage-blob==12.23.1
 azure-core>=1.29.0
 gunicorn
-rich
+langfuse
+richlangfuse
