@@ -2,13 +2,17 @@ import base64
 import io
 import logging
 import struct
+import atexit
 from typing import Optional
 
 import aiohttp
 from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AsyncAzureOpenAI
+from langfuse.decorators import langfuse_context
+from langfuse.openai import AsyncAzureOpenAI
+
+atexit.register(langfuse_context.flush)
 
 logger = logging.getLogger("voicerag")
 
@@ -95,6 +99,7 @@ class MiniAPI:
         
         return wav_file
     
+    @observe()
     async def transcribe_audio(self, audio_data: bytes) -> str:
         """Transcribe audio using gpt-realtime-mini API."""
         try:
@@ -150,6 +155,7 @@ class MiniAPI:
             logger.error(f"[MiniAPI] Unexpected error transcribing audio: {e}", exc_info=True)
             raise web.HTTPInternalServerError(text=f"Transcription failed: {str(e)}")
     
+    @observe()
     async def chat_completion(self, user_message: str) -> dict:
         """Get chat completion with RAG tools."""
         try:
