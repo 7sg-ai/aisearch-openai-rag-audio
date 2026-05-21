@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import logging
 import os
 from pathlib import Path
@@ -8,13 +7,12 @@ from aiohttp import web
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential, DefaultAzureCredential
 from dotenv import load_dotenv
-from langfuse.decorators import langfuse_context, observe
+from langfuse.decorators import observe
 
 from document_sync import DocumentSync
 from ragtools import attach_rag_tools
 from rtmt import RTMiddleTier
 
-atexit.register(langfuse_context.flush)
 
 logging.basicConfig(
     level=logging.INFO,
