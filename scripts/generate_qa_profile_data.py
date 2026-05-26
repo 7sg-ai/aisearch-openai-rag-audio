@@ -32,7 +32,7 @@ import io
 
 import websockets
 from dotenv import load_dotenv
-from openai import AzureOpenAI
+from langfuse.openai import AzureOpenAI
 from pydub import AudioSegment
 from pypdf import PdfReader
 from requests import Session
@@ -42,6 +42,10 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("generate_qa_profile")
+import atexit
+from langfuse.decorators import langfuse_context
+
+atexit.register(langfuse_context.flush)
 
 # Suppress verbose Azure Identity/Core logs (EnvironmentCredential, ManagedIdentityCredential, IMDS)
 for _logger in ("azure.identity", "azure.core", "urllib3.connectionpool"):

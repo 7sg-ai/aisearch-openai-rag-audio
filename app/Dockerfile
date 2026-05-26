@@ -1,24 +1,29 @@
 # Stage 1: Build the Vite app
 FROM node:20-slim AS build-stage
 
-# Set the working directory inside the container
+WORKDIR /build
 COPY frontend ./
-
-WORKDIR /frontend
+WORKDIR /build
 RUN npm install
 RUN npm run build
 
-# Stage 2: Serve the built app with a static file server
+# Stage 2: Production
 FROM python:3.12-slim AS production-stage
 
 WORKDIR /app
-COPY --from=build-stage /backend/static /app/static
-COPY ./backend/ /app
+
+# Copy static files from build stage
+COPY --from=build-stage /build/dist /app/static
+
+# Copy backend code
+COPY backend/ /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV RUNNING_IN_PRODUCTION=true
 
-# Install backend requirements (gunicorn is already in requirements.txt)
-RUN python -m pip install -r requirements.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
-CMD ["python3", "-m", "gunicorn", "app:create_app", "-b", "0.0.0.0:8000", "--worker-class", "aiohttp.GunicornWebWorker"]
+EXPOSE 8080
+
+CMD ["python3", "-m", "gunicorn", "app:create_app", "-b", "0.0.0.0:8080", "--worker-class", "aiohttp.GunicornWebWorker"]
