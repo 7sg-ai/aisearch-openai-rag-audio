@@ -42,10 +42,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("generate_qa_profile")
-import atexit
-from langfuse.decorators import langfuse_context
-
-atexit.register(langfuse_context.flush)
 
 # Suppress verbose Azure Identity/Core logs (EnvironmentCredential, ManagedIdentityCredential, IMDS)
 for _logger in ("azure.identity", "azure.core", "urllib3.connectionpool"):
@@ -62,9 +58,7 @@ def load_document_content(data_dir: Path) -> str:
                     text = file_path.read_text(encoding="utf-8", errors="replace")
                 elif file_path.suffix.lower() == ".pdf":
                     reader = PdfReader(file_path)
-                    text = "\n".join(
-                        page.extract_text() or "" for page in reader.pages
-                    )
+                    text = "\n".join(page.extract_text() or "" for page in reader.pages)
                 else:
                     continue
                 if text.strip():
@@ -117,18 +111,20 @@ def check_ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def convert_pcm_to_mp3(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
+def convert_pcm_to_mp3(
+    pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2
+) -> bytes:
     """Convert PCM16 audio data to MP3 format.
-    
+
     Args:
         pcm_data: Raw PCM16 audio bytes
         sample_rate: Sample rate in Hz (default: 24000 for realtime-mini)
         channels: Number of audio channels (default: 1 for mono)
         sample_width: Sample width in bytes (default: 2 for 16-bit)
-    
+
     Returns:
         MP3 audio data as bytes
-    
+
     Raises:
         FileNotFoundError: If ffmpeg is not installed
         Exception: If conversion fails for other reasons
@@ -141,14 +137,14 @@ def convert_pcm_to_mp3(pcm_data: bytes, sample_rate: int = 24000, channels: int 
             "  Linux: sudo apt-get install ffmpeg\n"
             "  Windows: Download from https://ffmpeg.org/download.html"
         )
-    
+
     try:
         # Create AudioSegment from raw PCM data
         audio = AudioSegment(
             pcm_data,
             frame_rate=sample_rate,
             channels=channels,
-            sample_width=sample_width
+            sample_width=sample_width,
         )
         # Export to MP3
         mp3_buffer = io.BytesIO()
@@ -189,19 +185,23 @@ async def get_realtime_response(
     question_text: str,
 ) -> tuple[str, bytes]:
     """Connect to WebSocket /realtime endpoint and capture both text and audio response.
-    
+
     Returns:
         tuple: (response_text, audio_data)
     """
     # Convert HTTP endpoint to WebSocket (app's /realtime endpoint proxies to Azure OpenAI)
-    ws_url = endpoint.replace("https://", "wss://").replace("http://", "ws://") + "/realtime"
-    
+    ws_url = (
+        endpoint.replace("https://", "wss://").replace("http://", "ws://") + "/realtime"
+    )
+
     # App's WebSocket endpoint doesn't require auth headers (it handles auth internally)
     # Handle SSL verification - Azure Container Apps should have valid certs, but allow disabling for dev/testing
     ssl_context = None
     ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
     if ssl_verify == "false":
-        logger.warning("SSL verification disabled (SSL_VERIFY=false) - use only for development/testing")
+        logger.warning(
+            "SSL verification disabled (SSL_VERIFY=false) - use only for development/testing"
+        )
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
@@ -209,10 +209,10 @@ async def get_realtime_response(
         # For Azure Container Apps, use default SSL context (should work with valid certs)
         ssl_context = ssl.create_default_context()
     # For other endpoints, use default (None = default SSL context)
-    
+
     audio_chunks = []
     response_text = ""
-    
+
     async with websockets.connect(ws_url, ssl=ssl_context) as ws:
         logger.info("WebSocket connected, starting session...")
         # Start session - enable audio and text output
@@ -221,14 +221,17 @@ async def get_realtime_response(
             "session": {
                 "turn_detection": {"type": "server_vad"},
                 "voice": os.environ.get("AZURE_OPENAI_REALTIME_VOICE_CHOICE", "alloy"),
-                "modalities": ["text", "audio"],  # Explicitly enable both text and audio
+                "modalities": [
+                    "text",
+                    "audio",
+                ],  # Explicitly enable both text and audio
                 "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16"
-            }
+                "output_audio_format": "pcm16",
+            },
         }
         await ws.send(json.dumps(session_update))
         logger.info("Sent session.update")
-        
+
         # Wait for session.created
         session_created = False
         while not session_created:
@@ -239,7 +242,7 @@ async def get_realtime_response(
             if msg_type == "session.created":
                 session_created = True
                 logger.info("Session created successfully")
-        
+
         # Send question as text input
         logger.info(f"Sending question: {question_text[:100]}...")
         question_msg = {
@@ -247,16 +250,16 @@ async def get_realtime_response(
             "item": {
                 "type": "message",
                 "role": "user",
-                "content": [{"type": "input_text", "text": question_text}]
-            }
+                "content": [{"type": "input_text", "text": question_text}],
+            },
         }
         await ws.send(json.dumps(question_msg))
         logger.info("Sent conversation.item.create")
-        
+
         # Request response
         await ws.send(json.dumps({"type": "response.create"}))
         logger.info("Sent response.create, waiting for response...")
-        
+
         # Collect audio chunks and transcript, wait for final response.done
         # Note: There may be multiple responses (tool calls, then final answer)
         response_done = False
@@ -264,7 +267,7 @@ async def get_realtime_response(
         max_timeout = 60  # 60 seconds timeout
         all_messages = []  # Store all messages for debugging
         response_count = 0  # Track number of responses
-        
+
         while not response_done:
             try:
                 # Set a timeout for receiving messages
@@ -276,135 +279,195 @@ async def get_realtime_response(
                         logger.warning("WebSocket timeout waiting for response.done")
                         break
                     continue
-                
+
                 message = json.loads(msg)
                 msg_type = message.get("type")
                 all_messages.append(msg_type)
-                
+
                 # Log all messages for debugging
-                if msg_type in ["response.audio.delta", "response.audio_transcript.delta"]:
-                    logger.info(f"WebSocket message received: {msg_type} (THIS IS WHAT WE'RE LOOKING FOR!)")
+                if msg_type in [
+                    "response.audio.delta",
+                    "response.audio_transcript.delta",
+                ]:
+                    logger.info(
+                        f"WebSocket message received: {msg_type} (THIS IS WHAT WE'RE LOOKING FOR!)"
+                    )
                 else:
                     logger.info(f"WebSocket message received: {msg_type}")
-                
+
                 if msg_type == "response.audio.delta":
                     delta = message.get("delta", "")
                     if delta:
                         decoded = base64.b64decode(delta)
                         audio_chunks.append(decoded)
-                        logger.info(f"Audio delta received: {len(decoded)} bytes (total: {sum(len(c) for c in audio_chunks)} bytes)")
-                
+                        logger.info(
+                            f"Audio delta received: {len(decoded)} bytes (total: {sum(len(c) for c in audio_chunks)} bytes)"
+                        )
+
                 elif msg_type == "response.audio_transcript.delta":
                     # Capture the transcript
                     delta = message.get("delta", "")
                     if delta:
                         response_text += delta
                         logger.info(f"Transcript delta: {delta[:100]}...")
-                
+
                 elif msg_type == "response.done":
                     response_count += 1
-                    logger.info(f"Received response.done #{response_count} - checking if this is the final response...")
+                    logger.info(
+                        f"Received response.done #{response_count} - checking if this is the final response..."
+                    )
                     # Check if response contains final text or audio
                     if "response" in message:
                         resp = message["response"]
                         output_items = resp.get("output", [])
-                        logger.info(f"Response #{response_count} output has {len(output_items)} items")
-                        
+                        logger.info(
+                            f"Response #{response_count} output has {len(output_items)} items"
+                        )
+
                         # Check if this response has actual content (not just tool calls)
                         has_content = False
                         for output_item in output_items:
                             item_type = output_item.get("type", "")
-                            if item_type not in ["function_call"]:  # Ignore function_call items
+                            if item_type not in [
+                                "function_call"
+                            ]:  # Ignore function_call items
                                 has_content = True
-                                logger.info(f"Response #{response_count} has content: {item_type}")
+                                logger.info(
+                                    f"Response #{response_count} has content: {item_type}"
+                                )
                                 # Check for transcript in output_item
                                 if "content" in output_item:
                                     for content_item in output_item["content"]:
-                                        if content_item.get("type") == "audio_transcript" and "transcript" in content_item:
-                                            final_transcript = content_item["transcript"]
+                                        if (
+                                            content_item.get("type")
+                                            == "audio_transcript"
+                                            and "transcript" in content_item
+                                        ):
+                                            final_transcript = content_item[
+                                                "transcript"
+                                            ]
                                             if final_transcript:
                                                 response_text = final_transcript
-                                                logger.info(f"Found final transcript in response.done: {final_transcript[:100]}...")
-                                elif output_item.get("type") == "audio_transcript" and "transcript" in output_item:
+                                                logger.info(
+                                                    f"Found final transcript in response.done: {final_transcript[:100]}..."
+                                                )
+                                elif (
+                                    output_item.get("type") == "audio_transcript"
+                                    and "transcript" in output_item
+                                ):
                                     final_transcript = output_item["transcript"]
                                     if final_transcript:
                                         response_text = final_transcript
-                                        logger.info(f"Found final transcript in response.done (direct): {final_transcript[:100]}...")
-                        
+                                        logger.info(
+                                            f"Found final transcript in response.done (direct): {final_transcript[:100]}..."
+                                        )
+
                         # If this response has content (audio/transcript), it's likely the final one
                         # Otherwise, wait for another response (tool calls completed, now generating answer)
                         if has_content or len(output_items) == 0:
                             # This might be the final response, but check if we have audio/transcript
                             # Also check if we've received any audio/transcript deltas
                             if len(audio_chunks) > 0 or len(response_text) > 0:
-                                logger.info(f"Response #{response_count} appears to be final (has audio/transcript)")
+                                logger.info(
+                                    f"Response #{response_count} appears to be final (has audio/transcript)"
+                                )
                                 response_done = True
                             elif response_count >= 3:
                                 # We've had multiple responses, assume this is final even if empty
-                                logger.warning(f"Response #{response_count} is final but has no content - may indicate an error")
-                                logger.warning(f"Full response structure: {json.dumps(resp, indent=2)}")
+                                logger.warning(
+                                    f"Response #{response_count} is final but has no content - may indicate an error"
+                                )
+                                logger.warning(
+                                    f"Full response structure: {json.dumps(resp, indent=2)}"
+                                )
                                 response_done = True
                             else:
-                                logger.info(f"Response #{response_count} completed but no content yet, waiting for next response...")
-                                logger.info(f"Will wait up to {max_timeout - timeout_count} more seconds for audio/transcript")
+                                logger.info(
+                                    f"Response #{response_count} completed but no content yet, waiting for next response..."
+                                )
+                                logger.info(
+                                    f"Will wait up to {max_timeout - timeout_count} more seconds for audio/transcript"
+                                )
                         else:
-                            logger.info(f"Response #{response_count} only has tool calls, waiting for final response...")
-                    
+                            logger.info(
+                                f"Response #{response_count} only has tool calls, waiting for final response..."
+                            )
+
                     if response_done:
                         # Log summary of all messages received
-                        logger.info(f"Final response completed after {response_count} responses")
-                        logger.info(f"All message types received: {', '.join(all_messages)}")
-                        logger.info(f"Audio chunks collected: {len(audio_chunks)}, total bytes: {sum(len(c) for c in audio_chunks)}")
+                        logger.info(
+                            f"Final response completed after {response_count} responses"
+                        )
+                        logger.info(
+                            f"All message types received: {', '.join(all_messages)}"
+                        )
+                        logger.info(
+                            f"Audio chunks collected: {len(audio_chunks)}, total bytes: {sum(len(c) for c in audio_chunks)}"
+                        )
                         logger.info(f"Transcript length: {len(response_text)} chars")
-                
+
                 elif msg_type == "error":
                     error_msg = message.get("error", {}).get("message", "Unknown error")
                     logger.error(f"WebSocket error message: {error_msg}")
                     break
-                
+
                 elif msg_type == "response.output_item.added":
                     # Check if this is an audio_transcript or audio item
                     if "item" in message:
                         item = message["item"]
                         item_type = item.get("type")
-                        logger.info(f"response.output_item.added: type={item_type}, item={json.dumps(item)[:300]}")
+                        logger.info(
+                            f"response.output_item.added: type={item_type}, item={json.dumps(item)[:300]}"
+                        )
                         if item_type == "audio_transcript":
                             if "transcript" in item:
                                 response_text = item["transcript"]
-                                logger.info(f"Found transcript in output_item.added: {response_text[:100]}...")
+                                logger.info(
+                                    f"Found transcript in output_item.added: {response_text[:100]}..."
+                                )
                         elif item_type == "audio":
                             # Audio item might contain audio data
                             logger.info(f"Found audio item in output_item.added")
-                
+
                 elif msg_type == "response.output_item.done":
                     # Check if this completes an audio_transcript item
                     if "item" in message:
                         item = message["item"]
                         item_type = item.get("type")
-                        logger.info(f"response.output_item.done: type={item_type}, item={json.dumps(item)[:300]}")
+                        logger.info(
+                            f"response.output_item.done: type={item_type}, item={json.dumps(item)[:300]}"
+                        )
                         if item_type == "audio_transcript" and "transcript" in item:
                             response_text = item["transcript"]
-                            logger.info(f"Found transcript in output_item.done: {response_text[:100]}...")
-                
+                            logger.info(
+                                f"Found transcript in output_item.done: {response_text[:100]}..."
+                            )
+
                 elif msg_type == "extension.middle_tier_tool_response":
                     # Tool response from backend - log it
                     tool_name = message.get("tool_name", "unknown")
                     logger.info(f"Tool response received: {tool_name}")
-                
+
                 elif msg_type == "response.created":
                     # A new response is being created (could be after tool calls)
-                    logger.info(f"Response created (this might be response #{response_count + 1} after tool calls)")
-                
-                elif msg_type in ["conversation.item.created", 
-                                  "response.function_call_arguments.delta",
-                                  "response.function_call_arguments.done",
-                                  "session.updated"]:
+                    logger.info(
+                        f"Response created (this might be response #{response_count + 1} after tool calls)"
+                    )
+
+                elif msg_type in [
+                    "conversation.item.created",
+                    "response.function_call_arguments.delta",
+                    "response.function_call_arguments.done",
+                    "session.updated",
+                ]:
                     # These are expected but we don't need to handle them (tool calls, etc.)
                     logger.debug(f"Ignoring message type: {msg_type}")
-                
+
                 else:
-                    logger.info(f"Unhandled message type: {msg_type}, keys: {list(message.keys())}, sample: {json.dumps(message)[:300]}")
-                    
+                    logger.info(
+                        f"Unhandled message type: {msg_type}, keys: {list(message.keys())}, sample: {json.dumps(message)[:300]}"
+                    )
+
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("WebSocket connection closed")
                 break
@@ -414,7 +477,7 @@ async def get_realtime_response(
             except Exception as e:
                 logger.warning(f"WebSocket error: {e}", exc_info=True)
                 break
-    
+
     # Concatenate all audio chunks
     audio_data = b"".join(audio_chunks) if audio_chunks else b""
     return response_text.strip(), audio_data
@@ -430,7 +493,7 @@ def main():
             "  Linux: sudo apt-get install ffmpeg\n"
             "  Windows: Download from https://ffmpeg.org/download.html"
         )
-    
+
     parser = argparse.ArgumentParser(
         description="Generate Q&A profile data from VoiceRAG documents"
     )
@@ -576,9 +639,7 @@ def main():
             )
 
     deployment = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5-mini")
-    questions = generate_questions(
-        client, document_content, args.count, deployment
-    )
+    questions = generate_questions(client, document_content, args.count, deployment)
     logger.info(f"Generated {len(questions)} questions")
 
     records = []
@@ -592,24 +653,38 @@ def main():
             # Step 1: Generate and save question audio locally BEFORE calling app
             if not args.skip_audio:
                 try:
-                    tts_deployment = os.environ.get("AZURE_OPENAI_TTS_DEPLOYMENT", "tts-hd")
+                    tts_deployment = os.environ.get(
+                        "AZURE_OPENAI_TTS_DEPLOYMENT", "tts-hd"
+                    )
                     logger.info(f"[{i + 1}] Generating question audio locally...")
                     # Use TTS client if separate endpoint configured, otherwise use main client
                     tts_client_to_use = tts_client if tts_client else client
                     tts_response = tts_client_to_use.audio.speech.create(
                         model=tts_deployment,
-                        voice=os.environ.get("AZURE_OPENAI_REALTIME_VOICE_CHOICE", "alloy"),
+                        voice=os.environ.get(
+                            "AZURE_OPENAI_REALTIME_VOICE_CHOICE", "alloy"
+                        ),
                         input=question,
                     )
                     # Read the binary response content (synchronous response has .content attribute)
-                    q_audio_data = tts_response.content if hasattr(tts_response, 'content') else b""
+                    q_audio_data = (
+                        tts_response.content
+                        if hasattr(tts_response, "content")
+                        else b""
+                    )
                     if q_audio_data:
                         q_audio_path = question_audio_dir / f"q_{i + 1:04d}.mp3"
                         q_audio_path.write_bytes(q_audio_data)
-                        question_audio_path = str(q_audio_path.relative_to(project_root))
-                        logger.info(f"[{i + 1}] Saved question audio (MP3): {len(q_audio_data)} bytes")
+                        question_audio_path = str(
+                            q_audio_path.relative_to(project_root)
+                        )
+                        logger.info(
+                            f"[{i + 1}] Saved question audio (MP3): {len(q_audio_data)} bytes"
+                        )
                 except Exception as e:
-                    logger.warning(f"[{i + 1}] Failed to generate question audio locally: {e}")
+                    logger.warning(
+                        f"[{i + 1}] Failed to generate question audio locally: {e}"
+                    )
 
             # Step 2: Get answer text and audio from app via WebSocket /realtime endpoint
             logger.info(f"[{i + 1}] Getting answer from app via WebSocket...")
@@ -622,37 +697,57 @@ def main():
                         question_text=question,
                     )
                 )
-                logger.info(f"[{i + 1}] Received answer from app: {len(answer)} chars, {len(a_audio_data)} audio bytes")
-                
+                logger.info(
+                    f"[{i + 1}] Received answer from app: {len(answer)} chars, {len(a_audio_data)} audio bytes"
+                )
+
                 # Step 3: Save answer audio if available (realtime-mini returns PCM audio, convert to MP3)
                 if not args.skip_audio and a_audio_data and len(a_audio_data) > 0:
                     try:
                         # Convert PCM16 to MP3 (realtime-mini uses 24kHz, 16-bit, mono PCM)
-                        mp3_data = convert_pcm_to_mp3(a_audio_data, sample_rate=24000, channels=1, sample_width=2)
+                        mp3_data = convert_pcm_to_mp3(
+                            a_audio_data, sample_rate=24000, channels=1, sample_width=2
+                        )
                         a_audio_path = answer_audio_dir / f"a_{i + 1:04d}.mp3"
                         a_audio_path.write_bytes(mp3_data)
                         answer_audio_path = str(a_audio_path.relative_to(project_root))
-                        logger.info(f"[{i + 1}] Saved answer audio from app (MP3): {len(a_audio_data)} bytes PCM -> {len(mp3_data)} bytes MP3")
+                        logger.info(
+                            f"[{i + 1}] Saved answer audio from app (MP3): {len(a_audio_data)} bytes PCM -> {len(mp3_data)} bytes MP3"
+                        )
                     except FileNotFoundError as e:
                         # ffmpeg not installed - save as PCM and warn user
                         logger.error(f"[{i + 1}] {e}")
                         a_audio_path = answer_audio_dir / f"a_{i + 1:04d}.pcm"
                         a_audio_path.write_bytes(a_audio_data)
                         answer_audio_path = str(a_audio_path.relative_to(project_root))
-                        logger.warning(f"[{i + 1}] Saved answer audio as PCM (ffmpeg not available): {len(a_audio_data)} bytes")
-                        logger.warning(f"[{i + 1}] Install ffmpeg to enable MP3 conversion: brew install ffmpeg")
+                        logger.warning(
+                            f"[{i + 1}] Saved answer audio as PCM (ffmpeg not available): {len(a_audio_data)} bytes"
+                        )
+                        logger.warning(
+                            f"[{i + 1}] Install ffmpeg to enable MP3 conversion: brew install ffmpeg"
+                        )
                     except Exception as e:
-                        logger.error(f"[{i + 1}] Failed to convert PCM to MP3: {e}", exc_info=True)
+                        logger.error(
+                            f"[{i + 1}] Failed to convert PCM to MP3: {e}",
+                            exc_info=True,
+                        )
                         # Fallback: save as PCM
                         a_audio_path = answer_audio_dir / f"a_{i + 1:04d}.pcm"
                         a_audio_path.write_bytes(a_audio_data)
                         answer_audio_path = str(a_audio_path.relative_to(project_root))
-                        logger.warning(f"[{i + 1}] Saved answer audio as PCM (conversion failed): {len(a_audio_data)} bytes")
+                        logger.warning(
+                            f"[{i + 1}] Saved answer audio as PCM (conversion failed): {len(a_audio_data)} bytes"
+                        )
                 elif not args.skip_audio:
-                    logger.warning(f"[{i + 1}] No audio data received from WebSocket (0 bytes)")
-                    
+                    logger.warning(
+                        f"[{i + 1}] No audio data received from WebSocket (0 bytes)"
+                    )
+
             except Exception as e:
-                logger.error(f"[{i + 1}] Failed to get answer from app WebSocket: {e}", exc_info=True)
+                logger.error(
+                    f"[{i + 1}] Failed to get answer from app WebSocket: {e}",
+                    exc_info=True,
+                )
                 answer = ""  # Fallback to empty answer on error
 
             # Step 4: Create record with all data
@@ -675,16 +770,18 @@ def main():
 
         except Exception as e:
             logger.error(f"[{i + 1}] Failed: {e}")
-            records.append({
-                "id": i + 1,
-                "messages": [
-                    {"role": "user", "content": question},
-                    {"role": "assistant", "content": ""},
-                ],
-                "question": question,
-                "answer": "",
-                "error": str(e),
-            })
+            records.append(
+                {
+                    "id": i + 1,
+                    "messages": [
+                        {"role": "user", "content": question},
+                        {"role": "assistant", "content": ""},
+                    ],
+                    "question": question,
+                    "answer": "",
+                    "error": str(e),
+                }
+            )
 
     # Write JSONL
     with open(output_path, "w", encoding="utf-8") as f:
