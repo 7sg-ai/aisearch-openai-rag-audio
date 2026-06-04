@@ -7,3 +7,5 @@ azure-storage-blob==12.23.1
 azure-core>=1.29.0
 gunicorn
 rich
+# OpenTelemetry auto-instrumentation for Langfuse tracing
+openinference-instrumentation-openai
