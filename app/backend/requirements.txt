@@ -7,3 +7,8 @@ azure-storage-blob==12.23.1
 azure-core>=1.29.0
 gunicorn
 rich
+# OpenTelemetry auto-instrumentation
+opentelemetry-distro
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrument-aiohttp
+opentelemetry-instrumentation
