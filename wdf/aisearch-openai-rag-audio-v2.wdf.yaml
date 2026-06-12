@@ -1,0 +1,137 @@
+apiVersion: wdf.7sg.ai/v2
+kind: WorkloadDefinition
+metadata:
+  name: aisearch-openai-rag-audio-v2
+  version: "1.0.0"
+  description: VoiceRAG - RAG + voice app using Azure AI Search and Azure OpenAI
+    (gpt-realtime-mini for transcription/TTS, gpt-5-mini for chat, text-embedding-3-large
+    for embeddings) deployed on Azure Container Apps.
+  tags:
+    env: prod
+security:
+  policies:
+    secretsInEnvAllowed: true
+secrets:
+  provider: azureKeyVault
+  secretRefs:
+  - name: voicerag-openai-endpoint
+    injectAs: env
+    envVar: AZURE_OPENAI_ENDPOINT
+    externalRef:
+      provider: azure-keyvault
+      key: voicerag-openai-endpoint
+      vaultUrl: https://wdf-secret-manager.vault.azure.net/
+  - name: voicerag-openai-api-key
+    injectAs: env
+    envVar: AZURE_OPENAI_API_KEY
+    externalRef:
+      provider: azure-keyvault
+      key: voicerag-openai-api-key
+      vaultUrl: https://wdf-secret-manager.vault.azure.net/
+  - name: azure-search-endpoint
+    injectAs: env
+    envVar: AZURE_SEARCH_ENDPOINT
+    externalRef:
+      provider: azure-keyvault
+      key: azure-search-endpoint
+      vaultUrl: https://wdf-secret-manager.vault.azure.net/
+  - name: azure-search-api-key
+    injectAs: env
+    envVar: AZURE_SEARCH_API_KEY
+    externalRef:
+      provider: azure-keyvault
+      key: azure-search-api-key
+      vaultUrl: https://wdf-secret-manager.vault.azure.net/
+  - name: azure-search-index
+    injectAs: env
+    envVar: AZURE_SEARCH_INDEX
+    externalRef:
+      provider: azure-keyvault
+      key: azure-search-index
+      vaultUrl: https://wdf-secret-manager.vault.azure.net/
+source:
+  repo: https://github.com/7sg-ai/aisearch-openai-rag-audio
+  branch: 7sg/sherpa
+  path: .
+dataSources:
+  inputs: []
+  outputs: []
+scenarios:
+  native:
+    description: 'Azure Container Apps deployment of VoiceRAG using gpt-realtime-mini
+      for real-time voice transcription/synthesis, gpt-5-mini for chat completion,
+      and Azure AI Search for RAG retrieval.'
+    topology:
+      components:
+      - name: voicerag-backend
+        role: api
+        runtime:
+          platform: container-apps
+          regions:
+          - eastus2
+          image:
+            registry: uvvoiceragtestacr.azurecr.io
+            repository: aisearch-openai-rag-audio
+            tag: latest
+          env:
+          - name: API_HOST
+            value: 0.0.0.0
+          - name: PORT
+            value: '8000'
+          - name: LOG_LEVEL
+            value: INFO
+          - name: PYTHONUNBUFFERED
+            value: '1'
+          - name: RUNNING_IN_PRODUCTION
+            value: 'true'
+          - name: AZURE_OPENAI_REALTIME_DEPLOYMENT
+            value: gpt-realtime-mini
+          - name: AZURE_OPENAI_CHAT_DEPLOYMENT
+            value: gpt-5-mini
+          - name: AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+            value: text-embedding-3-large
+          - name: AZURE_OPENAI_REALTIME_VOICE_CHOICE
+            value: alloy
+          envFromSecretRefs:
+          - voicerag-openai-endpoint
+          - voicerag-openai-api-key
+          - azure-search-endpoint
+          - azure-search-api-key
+          - azure-search-index
+          resources:
+            cpu: '1'
+            memory: 2Gi
+          autoscaling:
+            minReplicas: 1
+            maxReplicas: 10
+            policy:
+              metric: cpu
+              target: 70
+        endpoints:
+        - name: http
+          port: 8000
+          exposure: public
+          protocol: http
+          path: /
+    deployments:
+    - name: azure-container-apps-voicerag
+      target:
+        provider: azure
+        region: eastus2
+        tdfRef: voicerag-azure-east-v2
+        cluster: voicerag-test-aca-env
+        namespace: voicerag
+      identityRef: azure-managed-identity://voicerag
+      secretStores:
+        primary: wdf-secret-manager
+      components:
+      - voicerag-backend
+      overrides:
+        components:
+          voicerag-backend:
+            runtime:
+              image:
+                registry: uvvoiceragtestacr.azurecr.io
+                repository: aisearch-openai-rag-audio
+                tag: latest
+  alternates: []
